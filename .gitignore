@@ -1,3 +1,8 @@
+#Generic files
+hail-*.log
+.DS_Store
+.vscode
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
