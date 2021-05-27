@@ -2,6 +2,7 @@ import random
 
 import hail as hl
 import gnomad
+from gnomad import vep
 
 def get_random_subset(n, pop, metadata):
     '''
@@ -56,7 +57,7 @@ def main():
     hl.init()
     random.seed(1)
     v2er_hardcalls = hl.read_matrix_table("gs://gnomad/hardcalls/hail-0.2/mt/exomes/gnomad.exomes.mt")
-    v2er_hardcalls = v2er_hardcalls.filter_rows(v2er_hardcalls.info.AF[0]<0.001)
+    #v2er_hardcalls = v2er_hardcalls.filter_rows(v2er_hardcalls.info.AF[0]<0.001) #replace this filter with popmax AF below
     metadata = hl.read_table("gs://gnomad/metadata/exomes/gnomad.exomes.metadata.2018-10-11.ht")
     metadata = metadata.filter(metadata.release) #filter to releaseable samples
     v2er = hl.read_table("gs://gcp-public-data--gnomad/release/2.1.1/ht/exomes/gnomad.exomes.r2.1.1.sites.ht/")
@@ -77,6 +78,9 @@ def main():
                                 freq = v2er[random_samples_hardcalls.locus, random_samples_hardcalls.alleles].freq
                             )
     #Filter to variants of interest
+
+    random_samples_hardcalls = random_samples_hardcalls.filter(random_samples_hardcalls.popmax.AF[0]<0.001)
+    random_samples_hardcalls = vep.filter_vep_to_canonical_transcripts(random_samples_hardcalls) #filter to cannonical transcripts
 
     #Filter out reference alleles
     random_samples_hardcalls = random_samples_hardcalls.annotate_rows(samples_with_variant=hl.agg.filter(random_samples_hardcalls.GT.is_non_ref(), hl.agg.collect_as_set(random_samples_hardcalls.s)))
