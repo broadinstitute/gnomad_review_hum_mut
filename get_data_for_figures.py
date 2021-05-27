@@ -58,7 +58,7 @@ def main():
     v2er_hardcalls = hl.read_matrix_table("gs://gnomad/hardcalls/hail-0.2/mt/exomes/gnomad.exomes.mt")
     v2er_hardcalls = v2er_hardcalls.filter_rows(v2er_hardcalls.info.AF[0]<0.001)
     metadata = hl.read_table("gs://gnomad/metadata/exomes/gnomad.exomes.metadata.2018-10-11.ht")
-    metadata = metadata.filter(metadata.releasable_2_1) #filter to releaseable samples
+    metadata = metadata.filter(metadata.release) #filter to releaseable samples
     v2er = hl.read_table("gs://gcp-public-data--gnomad/release/2.1.1/ht/exomes/gnomad.exomes.r2.1.1.sites.ht/")
 
     if (hl.hadoop_exists("gs://gnomad-tmp/review-hum-mut/random_samples.ht") and hl.hadoop_exists("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")):
@@ -77,7 +77,7 @@ def main():
                                 freq = v2er[random_samples_hardcalls.locus, random_samples_hardcalls.alleles].freq
                             )
     #Filter to variants of interest
-    
+
     #Filter out reference alleles
     random_samples_hardcalls = random_samples_hardcalls.annotate_rows(samples_with_variant=hl.agg.filter(random_samples_hardcalls.GT.is_non_ref(), hl.agg.collect_as_set(random_samples_hardcalls.s)))
     ht = random_samples_hardcalls.rows()
