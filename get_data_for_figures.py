@@ -89,7 +89,7 @@ def main():
     variant=hl.str(ht.locus) + '-' + hl.delimit(ht.alleles, '-'),
     AC=ht.freq[0].AC,
     AF=ht.freq[0].AF,
-    AN=ht.freq[0].AN
+    AN=ht.freq[0].AN,
     popmax_AC=ht.popmax[0].AC,
     popmax_AF=ht.popmax[0].AF,
     popmax_AN=ht.popmax[0].AN,
