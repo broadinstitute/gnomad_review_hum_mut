@@ -1,9 +1,10 @@
+import argparse
 import random
 
 import hail as hl
 from hail.expr.aggregators.aggregators import info_score
 import gnomad
-from gnomad import vep
+from gnomad import vep, filtering
 
 def get_random_subset(n, pop, metadata):
     '''
@@ -45,7 +46,6 @@ def get_random_samples_of_populations(pops, n, metadata, hardcalls):
         random_samples = get_random_subset(n, pop, metadata)
         selected_samples = selected_samples.union(random_samples)
     selected_samples_hardcalls = get_hardcalls_of_samples(selected_samples,hardcalls)
-    selected_samples_hardcalls = hl.split_multi(selected_samples_hardcalls)
     return (selected_samples,selected_samples_hardcalls)
 
 def filter_hardcalls_variants_interest(hardcalls):
@@ -54,57 +54,86 @@ def filter_hardcalls_variants_interest(hardcalls):
     hardcalls_LOF = hardcalls_LOF.filter()
 
 
-def main():
+def main(args):
     hl.init()
     random.seed(1)
     v2er_hardcalls = hl.read_matrix_table("gs://gnomad/hardcalls/hail-0.2/mt/exomes/gnomad.exomes.mt")
+    v2er_hardcalls = hl.split_multi(v2er_hardcalls)
     #v2er_hardcalls = v2er_hardcalls.filter_rows(v2er_hardcalls.info.AF[0]<0.001) #replace this filter with popmax AF below
     metadata = hl.read_table("gs://gnomad/metadata/exomes/gnomad.exomes.metadata.2018-10-11.ht")
     metadata = metadata.filter(metadata.release) #filter to releaseable samples
     v2er = hl.read_table("gs://gcp-public-data--gnomad/release/2.1.1/ht/exomes/gnomad.exomes.r2.1.1.sites.ht/")
-    v2er_indexed = v2er[v2er_hardcalls.row_key()]
-    v2er_hardcalls = v2er_hardcalls.annotate(
+    v2er_indexed = v2er[v2er_hardcalls.row_key]
+    v2er_hardcalls = v2er_hardcalls.annotate_rows(
         vep = v2er_indexed.vep,
         freq = v2er_indexed.freq,
         popmax = v2er_indexed.popmax
     )
 
     v2er_hardcalls = v2er_hardcalls.filter_rows(v2er_hardcalls.popmax[0].AF<0.001)
+    populations = ["oth", "sas", "nfe", "fin", "afr", "amr", "asj","eas"]
 
-    if (hl.hadoop_exists("gs://gnomad-tmp/review-hum-mut/random_samples.ht") and hl.hadoop_exists("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")):
-        random_samples = hl.read_table("gs://gnomad-tmp/review-hum-mut/random_samples.ht")
-        random_samples_hardcalls = hl.read_matrix_table("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")
+    if args.checkpoint:
+        if (hl.hadoop_exists("gs://gnomad-tmp/review-hum-mut/random_samples.ht") and hl.hadoop_exists("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")):
+            random_samples = hl.read_table("gs://gnomad-tmp/review-hum-mut/random_samples.ht")
+            random_samples_hardcalls = hl.read_matrix_table("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")
+        else:
+            random_samples, random_samples_hardcalls = get_random_samples_of_populations(populations, 100, metadata, v2er_hardcalls)
+            random_samples = random_samples.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples.ht")
+            random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")
     else:
-        populations = ["oth", "sas", "nfe", "fin", "afr", "amr", "asj","eas"]
         random_samples, random_samples_hardcalls = get_random_samples_of_populations(populations, 100, metadata, v2er_hardcalls)
-        random_samples = random_samples.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples.ht")
+        random_samples = random_samples.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples.ht", overwrite= True)
+        random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt", overwrite=True)
 
     #Filter to variants of interest
-    random_samples_hardcalls = random_samples_hardcalls.filter_rows((hl.len(random_samples_hardcalls.filters) == 0) & hl.agg.any(random_samples_hardcalls.GT.is_non_ref()))
-    random_samples_hardcalls  = vep.filter_low_conf_regions(random_samples_hardcalls)
-    random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")
+
+    random_samples_hardcalls = random_samples_hardcalls.filter_rows(
+        (~hl.is_defined(random_samples_hardcalls.filters) | (hl.len(random_samples_hardcalls.filters) == 0))
+        & (hl.agg.any(random_samples_hardcalls.GT.is_non_ref()))
+    )
+    random_samples_hardcalls  = filtering.filter_low_conf_regions(random_samples_hardcalls)
+    ##random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt", overwrite=True)
     random_samples_hardcalls = vep.filter_vep_to_canonical_transcripts(random_samples_hardcalls)
-    random_samples_hardcalls = vep.get_most_severe_consequence_for_summary(random_samples_hardcalls)
-    random_samples_hardcalls = vep.filter_to_adj(random_samples_hardcalls)
+    ##random_samples_hardcalls = vep.get_most_severe_consequence_for_summary(random_samples_hardcalls)
+    random_samples_hardcalls = filtering.filter_to_adj(random_samples_hardcalls)
     random_samples_hardcalls = random_samples_hardcalls.filter_rows(hl.agg.any(random_samples_hardcalls.GT.is_non_ref())) #possibly repeated above?
-    random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls-filtered.mt")
+    random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls-filtered.mt", overwrite=True)
+
+    #random_samples_hardcalls = random_samples_hardcalls.filter_rows((hl.len(random_samples_hardcalls.filters) == 0) & hl.agg.any(random_samples_hardcalls.GT.is_non_ref()))
+    #random_samples_hardcalls  = vep.filter_low_conf_regions(random_samples_hardcalls)
+    #random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")
+    #random_samples_hardcalls = vep.filter_vep_to_canonical_transcripts(random_samples_hardcalls)
+    #random_samples_hardcalls = vep.get_most_severe_consequence_for_summary(random_samples_hardcalls)
+    #random_samples_hardcalls = vep.filter_to_adj(random_samples_hardcalls)
+    #random_samples_hardcalls = random_samples_hardcalls.filter_rows(hl.agg.any(random_samples_hardcalls.GT.is_non_ref())) #possibly repeated above?
+    #random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls-filtered.mt")
 
     #GT.is_non_ref() possibly repeated again?
     random_samples_hardcalls = random_samples_hardcalls.annotate_rows(samples_with_variant=hl.agg.filter(random_samples_hardcalls.GT.is_non_ref(), hl.agg.collect_as_set(random_samples_hardcalls.s)))
     ht = random_samples_hardcalls.rows()
     ht = ht.select(
-    "samples_with_variant",
-    pop=ht.pop,
-    VEP=ht.most_severe_csq, # From https://github.com/broadinstitute/gnomad_methods/blob/35066ffc01d63ac2d7b20e069ea6703013ae9da7/gnomad/utils/vep.py#L484
-    group=ht.group, # You will need to add this annotation based on the groupings that Sanna wants
-    variant=hl.str(ht.locus) + '-' + hl.delimit(ht.alleles, '-'),
-    AC=ht.freq[0].AC,
-    AF=ht.freq[0].AF,
-    AN=ht.freq[0].AN,
-    popmax_AC=ht.popmax[0].AC,
-    popmax_AF=ht.popmax[0].AF,
-    popmax_AN=ht.popmax[0].AN,
-)
+        "samples_with_variant",
+        pop=ht.pop,
+        VEP=ht.most_severe_csq, # From https://github.com/broadinstitute/gnomad_methods/blob/35066ffc01d63ac2d7b20e069ea6703013ae9da7/gnomad/utils/vep.py#L484
+        group=ht.group, # You will need to add this annotation based on the groupings that Sanna wants
+        variant=hl.str(ht.locus) + '-' + hl.delimit(ht.alleles, '-'),
+        AC=ht.freq[0].AC,
+        AF=ht.freq[0].AF,
+        AN=ht.freq[0].AN,
+        popmax_AC=ht.popmax[0].AC,
+        popmax_AF=ht.popmax[0].AF,
+        popmax_AN=ht.popmax[0].AN,
+    )
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        "This script generates all of the rare variants of interest from a random sample of individuals from each population present in gnomad exomes v.2.1.1"
+    )
+    parser.add_argument(
+        "--checkpoint",
+        action="store_true",
+        help="Use previously checkpointed random sample if it exists.")
+    args = parser.parse_args()
+
+    main(args)
