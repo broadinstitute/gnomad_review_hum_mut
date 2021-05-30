@@ -1,6 +1,7 @@
 import random
 
 import hail as hl
+from hail.expr.aggregators.aggregators import info_score
 import gnomad
 from gnomad import vep
 
@@ -61,6 +62,14 @@ def main():
     metadata = hl.read_table("gs://gnomad/metadata/exomes/gnomad.exomes.metadata.2018-10-11.ht")
     metadata = metadata.filter(metadata.release) #filter to releaseable samples
     v2er = hl.read_table("gs://gcp-public-data--gnomad/release/2.1.1/ht/exomes/gnomad.exomes.r2.1.1.sites.ht/")
+    v2er_indexed = v2er[v2er_hardcalls.row_key()]
+    v2er_hardcalls = v2er_hardcalls.annotate(
+        vep = v2er_indexed.vep,
+        freq = v2er_indexed.freq,
+        popmax = v2er_indexed.popmax
+    )
+
+    v2er_hardcalls = v2er_hardcalls.filter_rows(v2er_hardcalls.popmax[0].AF<0.001)
 
     if (hl.hadoop_exists("gs://gnomad-tmp/review-hum-mut/random_samples.ht") and hl.hadoop_exists("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")):
         random_samples = hl.read_table("gs://gnomad-tmp/review-hum-mut/random_samples.ht")
@@ -69,20 +78,18 @@ def main():
         populations = ["oth", "sas", "nfe", "fin", "afr", "amr", "asj","eas"]
         random_samples, random_samples_hardcalls = get_random_samples_of_populations(populations, 100, metadata, v2er_hardcalls)
         random_samples = random_samples.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples.ht")
-        random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")
 
-    #Annotate VEP and other infos
-    random_samples_hardcalls = random_samples_hardcalls.annotate_rows(
-                                vep = v2er[random_samples_hardcalls.locus, random_samples_hardcalls.alleles].vep,
-                                popmax = v2er[random_samples_hardcalls.locus, random_samples_hardcalls.alleles].popmax,
-                                freq = v2er[random_samples_hardcalls.locus, random_samples_hardcalls.alleles].freq
-                            )
     #Filter to variants of interest
+    random_samples_hardcalls = random_samples_hardcalls.filter_rows((hl.len(random_samples_hardcalls.filters) == 0) & hl.agg.any(random_samples_hardcalls.GT.is_non_ref()))
+    random_samples_hardcalls  = vep.filter_low_conf_regions(random_samples_hardcalls)
+    random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls.mt")
+    random_samples_hardcalls = vep.filter_vep_to_canonical_transcripts(random_samples_hardcalls)
+    random_samples_hardcalls = vep.get_most_severe_consequence_for_summary(random_samples_hardcalls)
+    random_samples_hardcalls = vep.filter_to_adj(random_samples_hardcalls)
+    random_samples_hardcalls = random_samples_hardcalls.filter_rows(hl.agg.any(random_samples_hardcalls.GT.is_non_ref())) #possibly repeated above?
+    random_samples_hardcalls = random_samples_hardcalls.checkpoint("gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls-filtered.mt")
 
-    random_samples_hardcalls = random_samples_hardcalls.filter(random_samples_hardcalls.popmax.AF[0]<0.001)
-    random_samples_hardcalls = vep.filter_vep_to_canonical_transcripts(random_samples_hardcalls) #filter to cannonical transcripts
-
-    #Filter out reference alleles
+    #GT.is_non_ref() possibly repeated again?
     random_samples_hardcalls = random_samples_hardcalls.annotate_rows(samples_with_variant=hl.agg.filter(random_samples_hardcalls.GT.is_non_ref(), hl.agg.collect_as_set(random_samples_hardcalls.s)))
     ht = random_samples_hardcalls.rows()
     ht = ht.select(
