@@ -66,6 +66,7 @@ def get_hardcalls_of_samples(mt, samples):
 def get_random_samples_of_populations(mt, meta_ht, pops, n):
     """
     Get a random sample of `n` columns in `mt` from each population in `pops`.
+    
     :param mt: Input MatrixTable
     :param meta_ht: Sample metadata Table
     :param pops: List of populations to select samples from
@@ -79,14 +80,18 @@ def get_random_samples_of_populations(mt, meta_ht, pops, n):
     meta_ht = meta_ht.filter(hl.literal(selected_samples).contains(meta_ht.s))
     return meta_ht, mt
 
+
 def filter_hardcalls_variants_interest(mt):
     """
     Annotate variants with a `group` annotations and filter to only those in groups of interest (missense, synonymous, and pLOF).
+    
     The following annotations are used to define the variants of interest:
         - pLOF (splice disrupting, nonsense variants, frameshift variants) that are predicted high-confidence (HC) by LOFTEE. VEP annotations: splice_acceptor, splice_donor_variant, stop_gained, frameshift_variant (that pass LOFTEE HC)
         - Missense variants and indels. VEP annotations: missense_variant, inframe_insertion, inframe_deletion
         - Synonymous variants. VEP annotations: synonymous_variant
+        
     Must include the `most_severe_csq` and `lof` annotations on `mt`.
+    
     :param mt: Input MatrixTable
     """
     mt = mt.annotate_rows(
@@ -116,6 +121,7 @@ def main(args):
         mt = hl.read_matrix_table(
             "gs://gnomad/hardcalls/hail-0.2/mt/exomes/gnomad.exomes.mt"
         )
+
         if args.test:
             mt = mt._filter_partitions(range(args.test_n_partitions))
 
@@ -124,8 +130,10 @@ def main(args):
         meta_ht = hl.read_table(
             "gs://gnomad/metadata/exomes/gnomad.exomes.metadata.2018-10-11.ht"
         )
+
         # Filter metadata to releasable samples
         meta_ht = meta_ht.filter(meta_ht.release)
+
         logger.info(
             "Reading in the gnomAD v2.1.1 release sites Hail Table to annotate with VEP, freq, popmax, and variant QC filters...")
         ht = hl.read_table(
@@ -138,6 +146,7 @@ def main(args):
             freq=ht_indexed.freq,
             popmax=ht_indexed.popmax,
         )
+
         # Filter to only variants with a popmax allele frequency of 0.1%
         mt = mt.filter_rows(mt.popmax[0].AF < 0.001)
         meta_ht, mt = get_random_samples_of_populations(mt, meta_ht, EXOME_POPS, 100)
@@ -151,6 +160,7 @@ def main(args):
     )
     mt = filter_low_conf_regions(mt)
     mt = filter_vep_to_canonical_transcripts(mt)
+
     logger.info("Getting the most severe consequence from the VEP annotation of the canonical transcript...")
     most_severe_csq_summary = get_most_severe_consequence_for_summary(mt.rows())[mt.row_key]
     mt = mt.annotate_rows(
