@@ -50,6 +50,7 @@ def get_random_subset(meta_ht, n, pop):
 def get_hardcalls_of_samples(mt, samples):
     """
     Filter a MatrixTable to a specific set of samples found in `samples`.
+    
     :param mt: MatrixTable to filter
     :param samples: Set of specific samples in `mt` to filter to
     """
