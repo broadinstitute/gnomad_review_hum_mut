@@ -12,3 +12,10 @@ Description of files:
 * [gnomad_qc](https://github.com/broadinstitute/gnomad_qc)
 
 ### Usage
+Run the code yourself:
+```
+python3 get_data_for_figures.py
+
+#Get help descriptions on the optional arguments:
+python3 get_data_for_figures.py -h
+```
