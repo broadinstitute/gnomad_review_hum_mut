@@ -6,5 +6,5 @@ Description of files:
 `get_data_for_figures.py` Script contaning all the code needed to generate a random subset of samples and filter gnomAD v.2.1.1 to rare variants of interest for those samples.
 
 Environment and packages used:
-Python 3.8.8
-Hail version 0.2.65-367cf1874d85
+* Python 3.8.8
+* Hail version 0.2.65-367cf1874d85
