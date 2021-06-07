@@ -8,7 +8,7 @@ Description of files:
 ### Environment and packages used:
 * Python 3.8.8
 * [Hail](https://hail.is/docs/0.2/index.html) version 0.2.65-367cf1874d85
-* [gnomad](https://github.com/broadinstitute/gnomad_methods) - `get_data_for_figures.py` uses additional code currenlty not found in a release version of gnomad. You will need to add the gnomad repo to your python path.
+* [gnomad](https://github.com/broadinstitute/gnomad_methods) - `get_data_for_figures.py` uses additional code currently not found in a release version of gnomad. You will need to add the gnomad repo to your python path.
 * [gnomad_qc](https://github.com/broadinstitute/gnomad_qc)
 
 ### Usage
