@@ -1,4 +1,4 @@
-# gnomad_review_hum_mut
+# Variant interpretation using the world’s largest population database: gnomAD
 This is the repository containing the supplementary code for the paper _Variant interpretation using the world’s largest population database: gnomAD_.
 
 Description of files:
