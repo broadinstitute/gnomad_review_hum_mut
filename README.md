@@ -8,4 +8,4 @@ Description of files:
 Environment and packages used:
 * Python 3.8.8
 * Hail version 0.2.65-367cf1874d85
-* [gnomad] (https://github.com/broadinstitute/gnomad_methods),
+* [gnomad](https://github.com/broadinstitute/gnomad_methods),
