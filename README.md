@@ -13,7 +13,7 @@ Description of files:
 
 ### Usage
 Run the code yourself:
-```
+```sh
 python3 get_data_for_figures.py
 
 #Get help descriptions on the optional arguments:
