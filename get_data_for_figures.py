@@ -121,7 +121,7 @@ def filter_hardcalls_variants_interest(mt):
 
 
 def main(args):
-    hl.init(log="/gnomad_review_hum_mut.log")
+    hl.init(log="./gnomad_review_hum_mut.log")
     random.seed(1)
 
     tmp_path = "gs://gnomad-tmp/"
