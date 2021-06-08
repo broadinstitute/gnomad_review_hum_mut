@@ -142,7 +142,7 @@ def main(args):
             )
     else:
         logger.info("Reading in gnomAD v2.1.1 exome hardcalls MatrixTable...")
-        mt = get_gnomad_data()
+        mt = get_gnomad_data("exomes")
 
         if args.test:
             mt = mt._filter_partitions(range(args.test_n_partitions))
