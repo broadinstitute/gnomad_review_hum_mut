@@ -3,7 +3,12 @@ import logging
 import random
 
 import hail as hl
-from gnomad.resources.grch37.gnomad import EXOME_POPS
+
+from gnomad.resources.config import (
+    gnomad_public_resource_configuration,
+    GnomadPublicResourceSource,
+)
+from gnomad.resources.grch37.gnomad import EXOME_POPS, public_release
 from gnomad.resources.resource_utils import DataException
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import filter_low_conf_regions, filter_to_adj
@@ -11,6 +16,16 @@ from gnomad.utils.vep import (
     filter_vep_to_canonical_transcripts,
     get_most_severe_consequence_for_summary,
 )
+
+from gnomad_qc.v2.resources.basics import get_gnomad_data, get_gnomad_meta
+
+logging.basicConfig(
+    format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+)
+logger = logging.getLogger("generate_figures")
+logger.setLevel(logging.INFO)
+
 EXOME_POPS = [pop.lower() for pop in EXOME_POPS]
 LOF_VEP = {
     "splice_acceptor_variant",
@@ -20,13 +35,6 @@ LOF_VEP = {
 }
 MISSENSE_INDEL_VEP = {"missense_variant", "inframe_insertion", "inframe_deletion"}
 SYNONYMOUS_VEP = {"synonymous_variant"}
-
-logging.basicConfig(
-    format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
-    datefmt="%m/%d/%Y %I:%M:%S %p"
-)
-logger = logging.getLogger("generate_figures")
-logger.setLevel(logging.INFO)
 
 
 def get_random_subset(meta_ht, n, pop):
@@ -45,7 +53,10 @@ def get_random_subset(meta_ht, n, pop):
         rand_samples = [subpop_samples[x] for x in vals]
         return rand_samples
     else:
-        raise ValueError(f"There are fewer total samples than the requested random sample size in the population: {pop}.")
+        raise ValueError(
+            f"There are fewer total samples than the requested random sample size in the population: {pop}."
+        )
+
 
 def get_hardcalls_of_samples(mt, samples):
     """
@@ -62,7 +73,7 @@ def get_hardcalls_of_samples(mt, samples):
     else:
         return mt
 
-    
+
 def get_random_samples_of_populations(mt, meta_ht, pops, n):
     """
     Get a random sample of `n` columns in `mt` from each population in `pops`.
@@ -96,8 +107,13 @@ def filter_hardcalls_variants_interest(mt):
     """
     mt = mt.annotate_rows(
         group=hl.case()
-        .when(hl.literal(LOF_VEP).contains(mt.most_severe_csq) & (mt.lof == "HC"), "LoF")
-        .when(hl.literal(MISSENSE_INDEL_VEP).contains(mt.most_severe_csq), "missense_indels")
+        .when(
+            hl.literal(LOF_VEP).contains(mt.most_severe_csq) & (mt.lof == "HC"), "LoF"
+        )
+        .when(
+            hl.literal(MISSENSE_INDEL_VEP).contains(mt.most_severe_csq),
+            "missense_indels",
+        )
         .when(hl.literal(SYNONYMOUS_VEP).contains(mt.most_severe_csq), "synonymous")
         .or_missing()
     )
@@ -105,40 +121,48 @@ def filter_hardcalls_variants_interest(mt):
 
 
 def main(args):
-    hl.init(log="/gnomad_review_hum_mut.log")
+    hl.init(log="./gnomad_review_hum_mut.log")
     random.seed(1)
-    random_samples_path = f"gs://gnomad-tmp/review-hum-mut/random_samples{'_test' if args.test else ''}.ht"
-    random_samples_hardcalls_path = f"gs://gnomad-tmp/review-hum-mut/random_samples_hardcalls{'_test' if args.test else ''}.mt"
-    
+
+    tmp_path = "gs://gnomad-tmp/"
+    random_samples_path = (
+        f"{tmp_path}review-hum-mut/random_samples{'_test' if args.test else ''}.ht"
+    )
+    random_samples_hardcalls_path = f"{tmp_path}review-hum-mut/random_samples_hardcalls{'_test' if args.test else ''}.mt"
+
     if args.use_checkpoint:
-        if (file_exists(random_samples_path) and file_exists(random_samples_hardcalls_path)):
+        if file_exists(random_samples_path) and file_exists(
+            random_samples_hardcalls_path
+        ):
             meta_ht = hl.read_table(random_samples_path)
             mt = hl.read_matrix_table(random_samples_hardcalls_path)
         else:
-            raise DataException("There is currently no checkpointed files for this dataset.")
+            raise DataException(
+                "There is currently no checkpointed files for this dataset."
+            )
     else:
         logger.info("Reading in gnomAD v2.1.1 exome hardcalls MatrixTable...")
-        mt = hl.read_matrix_table(
-            "gs://gnomad/hardcalls/hail-0.2/mt/exomes/gnomad.exomes.mt"
-        )
+        mt = get_gnomad_data("exomes")
 
         if args.test:
             mt = mt._filter_partitions(range(args.test_n_partitions))
 
         logger.info(
-            "Reading in the gnomAD v2.1.1 metadata HailTable from 2018-10-11 and filtering to only release samples (releasable and pass sample QC)...")
-        meta_ht = hl.read_table(
-            "gs://gnomad/metadata/exomes/gnomad.exomes.metadata.2018-10-11.ht"
+            "Reading in the gnomAD v2.1.1 metadata HailTable from 2018-10-11 and filtering to only release samples (releasable and pass sample QC)..."
         )
+        meta_ht = get_gnomad_meta("exomes")
 
         # Filter metadata to releasable samples
         meta_ht = meta_ht.filter(meta_ht.release)
 
         logger.info(
-            "Reading in the gnomAD v2.1.1 release sites Hail Table to annotate with VEP, freq, popmax, and variant QC filters...")
-        ht = hl.read_table(
-            "gs://gcp-public-data--gnomad/release/2.1.1/ht/exomes/gnomad.exomes.r2.1.1.sites.ht"
+            "Reading in the gnomAD v2.1.1 release sites Hail Table to annotate with VEP, freq, popmax, and variant QC filters..."
         )
+        gnomad_public_resource_configuration.source = (
+            GnomadPublicResourceSource.GOOGLE_CLOUD_PUBLIC_DATASETS
+        )
+        ht = public_release("exomes").ht()
+
         ht_indexed = ht[mt.row_key]
         mt = mt.annotate_rows(
             filters=ht_indexed.filters,
@@ -152,8 +176,10 @@ def main(args):
         meta_ht, mt = get_random_samples_of_populations(mt, meta_ht, EXOME_POPS, 100)
         meta_ht = meta_ht.checkpoint(random_samples_path, overwrite=args.overwrite)
         mt = mt.checkpoint(random_samples_hardcalls_path, overwrite=args.overwrite)
-    
-    logger.info("Filtering to PASS variants present in randomly sampled individuals, removing low confidence regions, and filtering VEP to canonical transcripts only...")
+
+    logger.info(
+        "Filtering to PASS variants present in randomly sampled individuals, removing low confidence regions, and filtering VEP to canonical transcripts only..."
+    )
     mt = mt.filter_rows(
         (hl.is_defined(mt.filters) & (hl.len(mt.filters) == 0))
         & (hl.agg.any(mt.GT.is_non_ref()))
@@ -161,8 +187,12 @@ def main(args):
     mt = filter_low_conf_regions(mt)
     mt = filter_vep_to_canonical_transcripts(mt)
 
-    logger.info("Getting the most severe consequence from the VEP annotation of the canonical transcript...")
-    most_severe_csq_summary = get_most_severe_consequence_for_summary(mt.rows())[mt.row_key]
+    logger.info(
+        "Getting the most severe consequence from the VEP annotation of the canonical transcript..."
+    )
+    most_severe_csq_summary = get_most_severe_consequence_for_summary(mt.rows())[
+        mt.row_key
+    ]
     mt = mt.annotate_rows(
         most_severe_csq=most_severe_csq_summary.most_severe_csq,
         protein_coding=most_severe_csq_summary.protein_coding,
@@ -170,19 +200,27 @@ def main(args):
         no_lof_flags=most_severe_csq_summary.no_lof_flags,
     )  # get_most_severe_consequence_for_summary works only on tables
 
-    logger.info("Filtering genotypes to adj and the matrix table to variants with at least one non ref after adj filtering...")
+    logger.info(
+        "Filtering genotypes to adj and the matrix table to variants with at least one non ref after adj filtering..."
+    )
     mt = filter_to_adj(mt)
     mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
-    logger.info("Annotating and filtering the MT to only to variants with a VEP consequence of interest...")
+    logger.info(
+        "Annotating and filtering the MT to only to variants with a VEP consequence of interest..."
+    )
     mt = filter_hardcalls_variants_interest(mt)
 
-    mt = mt.annotate_rows(samples_with_variant=hl.agg.filter(mt.GT.is_non_ref(), hl.agg.collect_as_set(mt.s)))
+    mt = mt.annotate_rows(
+        samples_with_variant=hl.agg.filter(
+            mt.GT.is_non_ref(), hl.agg.collect_as_set(mt.s)
+        )
+    )
     ht = mt.rows()
     ht = ht.select(
         "samples_with_variant",
         VEP=ht.most_severe_csq,
         group=ht.group,
-        variant=hl.str(ht.locus) + '-' + hl.delimit(ht.alleles, '-'),
+        variant=hl.str(ht.locus) + "-" + hl.delimit(ht.alleles, "-"),
         AC=ht.freq[0].AC,
         AF=ht.freq[0].AF,
         AN=ht.freq[0].AN,
@@ -192,16 +230,30 @@ def main(args):
     )
     ht = ht.explode("samples_with_variant")
     random_samples_pop_map = hl.dict(hl.zip(meta_ht.s.collect(), meta_ht.pop.collect()))
-    ht = ht.annotate(pop=random_samples_pop_map[ht.samples_with_variant])  # does not require a shuffle this way
+    ht = ht.annotate(
+        pop=random_samples_pop_map[ht.samples_with_variant]
+    )  # does not require a shuffle this way
 
-    meta_ht.write(f"gs://gnomad-wphu/review-hum-mut/random_samples_metadata{'_test' if args.test else ''}.ht", overwrite=args.overwrite)
-    mt.write(f"gs://gnomad-wphu/review-hum-mut/random_samples_hardcalls_filtered{'_test' if args.test else ''}.mt", overwrite=args.overwrite)
-    ht.write(f"gs://gnomad-wphu/review-hum-mut/samples_with_variants{'_test' if args.test else ''}.ht", overwrite=args.overwrite)
+    meta_ht.write(
+        f"{args.output_path_prefix}/random_samples_metadata{'_test' if args.test else ''}.ht",
+        overwrite=args.overwrite,
+    )
+    mt.write(
+        f"{args.output_path_prefix}/random_samples_hardcalls_filtered{'_test' if args.test else ''}.mt",
+        overwrite=args.overwrite,
+    )
+    ht.write(
+        f"{args.output_path_prefix}/samples_with_variants{'_test' if args.test else ''}.ht",
+        overwrite=args.overwrite,
+    )
     if args.overwrite:
-        ht.export(f"gs://gnomad-wphu/review-hum-mut/samples_with_variants{'_test' if args.test else ''}.tsv", header=True)
-
+        ht.export(
+            f"{args.output_path_prefix}/samples_with_variants{'_test' if args.test else ''}.tsv",
+            header=True,
+        )
 
     logger.info("Wrote out table with %s rows.", ht.count())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -210,17 +262,24 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use_checkpoint",
         action="store_true",
-        help="Use previously checkpointed random sample if it exists.")
+        help="Use previously checkpointed random sample if it exists.",
+    )
     parser.add_argument(
         "--test",
         action="store_true",
-        help='subset hardcalls table to a small number of partitions for testing.'
+        help="subset hardcalls table to a small number of partitions for testing.",
     )
     parser.add_argument(
         "--test_n_partitions",
         default=5,
         type=int,
-        help='Number of partitions to use for testing.'
+        help="Number of partitions to use for testing.",
+    )
+    parser.add_argument(
+        "--output_path_prefix",
+        default="gs://gnomad-wphu/review-hum-mut",
+        type=str,
+        help="Google folder to store output.",
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     args = parser.parse_args()
