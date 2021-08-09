@@ -57,7 +57,7 @@ def get_random_subset(meta_ht, n, pop):
             f"There are fewer total samples than the requested random sample size in the population: {pop}."
         )
 
-
+#filter to select samples
 def get_hardcalls_of_samples(mt, samples):
     """
     Filter a MatrixTable to a specific set of samples found in `samples`.
@@ -86,7 +86,7 @@ def get_random_samples_of_populations(mt, meta_ht, pops, n):
     selected_samples = set([])
     for pop in pops:
         random_samples = get_random_subset(meta_ht, n, pop)
-        selected_samples = selected_samples | set(random_samples)
+        selected_samples = selected_samples | set(random_samples) #what's the preferred syntax for adding onto a set?
     mt = get_hardcalls_of_samples(mt, selected_samples)
     meta_ht = meta_ht.filter(hl.literal(selected_samples).contains(meta_ht.s))
     return meta_ht, mt
@@ -152,7 +152,7 @@ def main(args):
         )
         meta_ht = get_gnomad_meta("exomes")
 
-        # Filter metadata to releasable samples
+        # Filter metadata to release samples
         meta_ht = meta_ht.filter(meta_ht.release)
 
         logger.info(
@@ -181,15 +181,18 @@ def main(args):
         "Filtering to PASS variants present in randomly sampled individuals, removing low confidence regions, and filtering VEP to canonical transcripts only..."
     )
     mt = mt.filter_rows(
-        (hl.is_defined(mt.filters) & (hl.len(mt.filters) == 0))
-        & (hl.agg.any(mt.GT.is_non_ref()))
+        (hl.is_defined(mt.filters) & (hl.len(mt.filters) == 0)) #no need for these parentheses
+        & (hl.agg.any(mt.GT.is_non_ref())) #no need for extra set of parentheses
     )
+    #checkpoint the mt later after filtering out for non_ref
+
     mt = filter_low_conf_regions(mt)
     mt = filter_vep_to_canonical_transcripts(mt)
 
     logger.info(
         "Getting the most severe consequence from the VEP annotation of the canonical transcript..."
     )
+    #consistency with naming index 
     most_severe_csq_summary = get_most_severe_consequence_for_summary(mt.rows())[
         mt.row_key
     ]
@@ -204,7 +207,7 @@ def main(args):
         "Filtering genotypes to adj and the matrix table to variants with at least one non ref after adj filtering..."
     )
     mt = filter_to_adj(mt)
-    mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
+    mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref())) #is there a reason for having the second non_ref filter? othw move filter_to_adj above?
     logger.info(
         "Annotating and filtering the MT to only to variants with a VEP consequence of interest..."
     )
@@ -242,6 +245,7 @@ def main(args):
         f"{args.output_path_prefix}/random_samples_hardcalls_filtered{'_test' if args.test else ''}.mt",
         overwrite=args.overwrite,
     )
+    #add checkpoint for ht
     ht.write(
         f"{args.output_path_prefix}/samples_with_variants{'_test' if args.test else ''}.ht",
         overwrite=args.overwrite,
@@ -252,10 +256,11 @@ def main(args):
             header=True,
         )
 
-    logger.info("Wrote out table with %s rows.", ht.count())
+    logger.info("Wrote out table with %s rows.", ht.count()) #checkpoint the ht before count
 
 
 if __name__ == "__main__":
+    #change underscores to dashes
     parser = argparse.ArgumentParser(
         "This script generates all of the rare variants of interest from a random sample of individuals from each population present in gnomad exomes v.2.1.1"
     )
@@ -277,7 +282,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--output_path_prefix",
-        default="gs://gnomad-wphu/review-hum-mut",
+        default="gs://gnomad-wphu/review-hum-mut", #consider where path should go
         type=str,
         help="Google folder to store output.",
     )
