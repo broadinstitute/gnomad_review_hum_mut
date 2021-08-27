@@ -120,6 +120,22 @@ def filter_hardcalls_variants_interest(mt):
     return mt.filter_rows(hl.is_defined(mt.group))
 
 
+def filter_v3_1_samples(meta_ht):
+    ht = hl.read_table("gs://gnomad-julia/review-hum-mut/v2_exomes_v3.1_new_samples_relatedness.ht")
+    v31_in_v2_ht = ht.filter(
+        (
+            (ht.i.data_type == "v3_genomes") | (ht.j.data_type == "v3_genomes")
+            & ~(ht.i.data_type == "v3_genomes") & (ht.j.data_type == "v3_genomes")
+        )
+    )
+
+    v31_in_v2_ht = v31_in_v2_ht.filter(v31_in_v2_ht.ibd2 > 0.4).select()
+    dup_list = hl.literal(set(v31_in_v2_ht.i.s.collect()) | set(v31_in_v2_ht.j.s.collect()))
+    meta_ht = meta_ht.filter(~dup_list.contains(meta_ht.s))
+
+    return meta_ht
+
+
 def main(args):
     hl.init(log="./gnomad_review_hum_mut.log")
     random.seed(1)
@@ -173,6 +189,7 @@ def main(args):
 
         # Filter to only variants with a popmax allele frequency of 0.1%
         mt = mt.filter_rows(mt.popmax[0].AF < 0.001)
+        meta_ht = filter_v3_1_samples(meta_ht)
         meta_ht, mt = get_random_samples_of_populations(mt, meta_ht, EXOME_POPS, 100)
         meta_ht = meta_ht.checkpoint(random_samples_path, overwrite=args.overwrite)
         mt = mt.checkpoint(random_samples_hardcalls_path, overwrite=args.overwrite)
