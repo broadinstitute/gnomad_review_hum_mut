@@ -187,8 +187,21 @@ def main(args):
             popmax=ht_indexed.popmax,
         )
 
-        # Filter to only variants with a popmax allele frequency of 0.1%
-        mt = mt.filter_rows(mt.popmax[0].AF < 0.001)
+        logger.info("Reading in v2 genomes, v3 genomes, and v2 liftover tables.")
+        v2_genomes = hl.read_table("gs://gcp-public-data--gnomad/release/2.1.1/ht/genomes/gnomad.genomes.r2.1.1.sites.ht")
+        v3_genomes = hl.read_table("gs://gcp-public-data--gnomad/release/3.1.1/ht/genomes/gnomad.genomes.v3.1.1.sites.ht")
+        v2_liftover = hl.read_table("gs://gcp-public-data--gnomad/release/2.1.1/liftover_grch38/ht/exomes/gnomad.exomes.r2.1.1.sites.liftover_grch38.ht")
+        v2_liftover = v2_liftover.key_by("original_locus", "original_alleles")
+        #annotate liftover locus onto MT
+        v2_liftover_index = v2_liftover[mt.row_key]
+        mt = mt.annotate_rows(liftover_locus = v2_liftover_index.locus, liftover_allele = v2_liftover_index.alleles)
+        #index v2 exome variants from v2 genomes and v3
+        v2_genomes_indexed = v2_genomes[mt.row_key]
+        v3_genomes_indexed = v3_genomes[mt.liftover_locus,mt.liftover_allele]
+        mt = mt.annotate_rows(v2_genomes_popmax = v2_genomes_indexed.popmax, v3_genomes_popmax = v3_genomes_indexed.popmax)
+        # Filter to only variants with a popmax allele frequency of < 0.1% in v2_exomes, v2_genomes, AND v3_genomes
+        mt = mt.filter_rows((mt.popmax[0].AF < 0.001) & (mt.v2_genomes_popmax[0].AF<0.001) & (mt.v3_genomes_popmax.AF<0.001))
+
         meta_ht = filter_v3_1_samples(meta_ht)
         meta_ht, mt = get_random_samples_of_populations(mt, meta_ht, EXOME_POPS, 100)
         meta_ht = meta_ht.checkpoint(random_samples_path, overwrite=args.overwrite)
