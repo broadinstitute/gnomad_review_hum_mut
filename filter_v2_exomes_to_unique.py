@@ -29,6 +29,7 @@ def main(args):
     samples_with_variants = samples_with_variants.annotate(v3_non_v2_adj_freq = v3_variants[samples_with_variants.liftover_locus,samples_with_variants.liftover_alleles].freq[idx])
     v3_non_v2_filtering_expr = (samples_with_variants.v3_non_v2_adj_freq.AC<1) | ~hl.is_defined(samples_with_variants.v3_non_v2_adj_freq.AC)
     samples_with_variants = samples_with_variants.filter(v3_non_v2_filtering_expr)
+
     logger.info(f"Writing Hail Table to {args.output_path_prefix}/v2_exomes_unique_samples_with_variants.ht")
     samples_with_variants = samples_with_variants.checkpoint(f"{args.output_path_prefix}/v2_exomes_unique_samples_with_variants.ht", overwrite = args.overwrite)
     logger.info(f"{original_count} variants were filtered to {samples_with_variants.count()} variants.")
