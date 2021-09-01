@@ -25,7 +25,7 @@ def main(args):
     samples_with_variants = samples_with_variants.annotate(v2_genomes_adj_freq = v2_genomes[samples_with_variants.locus,samples_with_variants.alleles].freq[idx])
     v2_genomes_filtering_expr = (samples_with_variants.v2_genomes_adj_freq.AC<1) | ~hl.is_defined(samples_with_variants.v2_genomes_adj_freq.AC)
     samples_with_variants = samples_with_variants.filter(v2_genomes_filtering_expr)
-    idx = v3_variants.freq_meta.collect()[0].index({'group': 'raw', 'subset': 'non_v2'})
+    freq_adj_idx = v3_genomes_ht.freq_meta.collect()[0].index({'group': 'adj', 'subset': 'non_v2'})
     samples_with_variants = samples_with_variants.annotate(v3_non_v2_adj_freq = v3_variants[samples_with_variants.liftover_locus,samples_with_variants.liftover_alleles].freq[idx])
     v3_non_v2_filtering_expr = (samples_with_variants.v3_non_v2_adj_freq.AC<1) | ~hl.is_defined(samples_with_variants.v3_non_v2_adj_freq.AC)
     samples_with_variants = samples_with_variants.filter(v3_non_v2_filtering_expr)
