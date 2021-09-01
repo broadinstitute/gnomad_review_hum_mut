@@ -20,7 +20,8 @@ def main(args):
     v2_liftover = v2_liftover.key_by("original_locus", "original_alleles")
     v2_liftover_index = v2_liftover[samples_with_variants.locus, samples_with_variants.alleles]
     samples_with_variants = samples_with_variants.annotate(liftover_locus = v2_liftover_index.locus, liftover_alleles = v2_liftover_index.alleles)
-    logger.info("Filtering variants not found in v2 genomes or v3_non_v2...")
+
+    logger.info("Filtering variants not found in v2 genomes or v3 samples not found in v2 exomes...")
     idx = v2_genomes.freq_meta.collect()[0].index({'group': 'adj'})
     samples_with_variants = samples_with_variants.annotate(v2_genomes_adj_freq = v2_genomes[samples_with_variants.locus,samples_with_variants.alleles].freq[idx])
     v2_genomes_filtering_expr = (samples_with_variants.v2_genomes_adj_freq.AC<1) | ~hl.is_defined(samples_with_variants.v2_genomes_adj_freq.AC)
