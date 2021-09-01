@@ -14,7 +14,7 @@ def main(args):
     logger.info("Loading variant table, v2 genomes, v3 variants, and v2 liftover...")
     samples_with_variants = hl.read_table(args.sample_with_variants_path)
     original_count = samples_with_variants.count()
-    v2_genomes = hl.read_table("gs://gcp-public-data--gnomad/release/2.1.1/ht/genomes/gnomad.genomes.r2.1.1.sites.ht")
+    v2_genomes_ht = hl.read_table("gs://gcp-public-data--gnomad/release/2.1.1/ht/genomes/gnomad.genomes.r2.1.1.sites.ht")
     v3_genomes_ht = hl.read_table("gs://gcp-public-data--gnomad/release/3.1.1/ht/genomes/gnomad.genomes.v3.1.1.sites.ht")
     v2_exome_liftover_ht` = hl.read_table("gs://gcp-public-data--gnomad/release/2.1.1/liftover_grch38/ht/exomes/gnomad.exomes.r2.1.1.sites.liftover_grch38.ht")
     v2_liftover = v2_liftover.key_by("original_locus", "original_alleles")
