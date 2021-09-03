@@ -251,7 +251,8 @@ def main(args):
         meta_ht, mt = get_random_samples_of_populations(mt, meta_ht, EXOME_POPS, 100)
         meta_ht = meta_ht.checkpoint(random_samples_path, overwrite=args.overwrite)
         mt = mt.checkpoint(random_samples_hardcalls_path, overwrite=args.overwrite)
-
+    
+    #currently filter_low_conf_regions is trying to access a resource (lcr_regions) that's in a gnomad_requester_pays_bucket - cannot access it through google cloud.
     gnomad_public_resource_configuration.source = GnomadPublicResourceSource.GNOMAD
     logger.info(
         "Filtering to PASS variants present in randomly sampled individuals, removing low confidence regions, and filtering VEP to canonical transcripts only..."
