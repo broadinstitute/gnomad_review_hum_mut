@@ -49,10 +49,7 @@ def main(args):
             freq_adj_idx
         ]
     )
-    v3_non_v2_filtering_expr = (ht.v3_non_v2_adj_freq.AC < 1) | hl.is_missing(
-        ht.v3_non_v2_adj_freq.AC
-    )
-    ht = ht.filter(v3_non_v2_filtering_expr)
+    ht = ht.filter(hl.or_else(ht.v3_non_v2_adj_freq.AC == 0, True))
 
     logger.info(
         f"Writing Hail Table to {args.output_path_prefix}/v2_exomes_unique_samples_with_variants.ht"
