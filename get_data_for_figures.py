@@ -185,7 +185,6 @@ def main(args):
 
         if args.test:
             mt = mt._filter_partitions(range(args.test_n_partitions))
-            mt = mt.repartition(args.test_n_partitions)
 
         logger.info(
             "Reading in the gnomAD v2.1.1 metadata HailTable from 2018-10-11 and filtering to only release samples (releasable and pass sample QC)..."

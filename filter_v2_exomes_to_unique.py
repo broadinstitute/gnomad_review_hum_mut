@@ -36,17 +36,17 @@ def main(args):
     logger.info(
         "Filtering variants not found in v2 genomes or v3 samples but found in v2 exomes..."
     )
-    freq_adj_idx = v2_genomes_ht.freq_meta.collect()[0].index({"group": "adj"})
+    freq_adj_idx = hl.eval(v2_genomes_ht.freq_meta.index({"group": "adj"}))
     ht = ht.annotate(
-        v2_genomes_adj_freq=v2_genomes_ht[ht.locus, ht.alleles].freq[freq_adj_idx]
+        v2_genomes_adj_freq=v2_genomes_ht[ht.key].freq[freq_adj_idx]
     )
     v2_genomes_filtering_expr = (ht.v2_genomes_adj_freq.AC < 1) | hl.is_missing(
         ht.v2_genomes_adj_freq.AC
     )
     ht = ht.filter(v2_genomes_filtering_expr)
-    freq_adj_idx = v3_genomes_ht.freq_meta.collect()[0].index(
+    freq_adj_idx = hl.eval(v3_genomes_ht.freq_meta.index(
         {"group": "adj", "subset": "non_v2"}
-    )
+    ))
     ht = ht.annotate(
         v3_non_v2_adj_freq=v3_genomes_ht[ht.liftover_locus, ht.liftover_alleles].freq[
             freq_adj_idx
