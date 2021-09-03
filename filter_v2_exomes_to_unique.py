@@ -34,13 +34,13 @@ def main(args):
     )
 
     logger.info(
-        "Filtering variants not found in v2 genomes or v3 samples not found in v2 exomes..."
+        "Filtering variants not found in v2 genomes or v3 samples but found in v2 exomes..."
     )
     freq_adj_idx = v2_genomes_ht.freq_meta.collect()[0].index({"group": "adj"})
     ht = ht.annotate(
         v2_genomes_adj_freq=v2_genomes_ht[ht.locus, ht.alleles].freq[freq_adj_idx]
     )
-    v2_genomes_filtering_expr = (ht.v2_genomes_adj_freq.AC < 1) | ~hl.is_defined(
+    v2_genomes_filtering_expr = (ht.v2_genomes_adj_freq.AC < 1) | hl.is_missing(
         ht.v2_genomes_adj_freq.AC
     )
     ht = ht.filter(v2_genomes_filtering_expr)
@@ -52,7 +52,7 @@ def main(args):
             freq_adj_idx
         ]
     )
-    v3_non_v2_filtering_expr = (ht.v3_non_v2_adj_freq.AC < 1) | ~hl.is_defined(
+    v3_non_v2_filtering_expr = (ht.v3_non_v2_adj_freq.AC < 1) | hl.is_missing(
         ht.v3_non_v2_adj_freq.AC
     )
     ht = ht.filter(v3_non_v2_filtering_expr)
@@ -76,7 +76,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # change underscores to dashes
     parser = argparse.ArgumentParser(
         "This script filters a Hail Table of rare variants of interest from a random sample of individuals from each population present in gnomad exomes v.2.1.1 to variants not found in v2 genomes or the v3-non-v2 subset."
     )

@@ -3,6 +3,7 @@ import logging
 import random
 
 import hail as hl
+from hail.expr.functions import is_missing
 
 from gnomad.resources.config import (
     gnomad_public_resource_configuration,
@@ -25,6 +26,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("generate_figures")
 logger.setLevel(logging.INFO)
+
+gnomad_public_resource_configuration.source = (
+    GnomadPublicResourceSource.GOOGLE_CLOUD_PUBLIC_DATASETS
+)
 
 EXOME_POPS = [pop.lower() for pop in EXOME_POPS]
 LOF_VEP = {
@@ -167,10 +172,16 @@ def main(args):
             )
     else:
         logger.info("Reading in gnomAD v2.1.1 exome hardcalls MatrixTable...")
-        mt = get_gnomad_data("exomes")
+        try:
+            mt = get_gnomad_data("exomes")
+        except:
+            mt = hl.read_matrix_table(
+                "gs://gnomad_v2/hardcalls/hail-0.2/mt/exomes/gnomad.exomes.mt"
+            )
 
         if args.test:
             mt = mt._filter_partitions(range(args.test_n_partitions))
+            mt = mt.repartition(args.test_n_partitions)
 
         logger.info(
             "Reading in the gnomAD v2.1.1 metadata HailTable from 2018-10-11 and filtering to only release samples (releasable and pass sample QC)..."
@@ -182,9 +193,6 @@ def main(args):
 
         logger.info(
             "Reading in the gnomAD v2.1.1 release sites Hail Table to annotate with VEP, freq, popmax, and variant QC filters..."
-        )
-        gnomad_public_resource_configuration.source = (
-            GnomadPublicResourceSource.GOOGLE_CLOUD_PUBLIC_DATASETS
         )
         ht = public_release("exomes").ht()
 
@@ -213,25 +221,35 @@ def main(args):
             liftover_locus=v2_liftover_index.locus,
             liftover_allele=v2_liftover_index.alleles,
         )
-        # index v2 exome variants from v2 genomes and v3
+        # get v2 exome variants from v2 genomes and v3 genomes, and annotate their respective AF
         v2_genomes_indexed = v2_genomes[mt.row_key]
         v3_genomes_indexed = v3_genomes[mt.liftover_locus, mt.liftover_allele]
         mt = mt.annotate_rows(
             v2_genomes_popmax=v2_genomes_indexed.popmax,
             v3_genomes_popmax=v3_genomes_indexed.popmax,
         )
-        # Filter to only variants with a popmax allele frequency of < 0.1% in v2_exomes, v2_genomes, AND v3_genomes
-        mt = mt.filter_rows(
-            (mt.popmax[0].AF < 0.001)
-            & (mt.v2_genomes_popmax[0].AF < 0.001)
-            & (mt.v3_genomes_popmax.AF < 0.001)
+        logger.info(
+            "Filtering to variants with a popmax allele frequency of less than .001 in v2_exomes, AND v2_genomes, AND v3_genomes..."
         )
-
+        # Filter to only variants with a popmax allele frequency of < 0.1% in v2_exomes, AND v2_genomes, AND v3_genomes
+        mt = mt.filter_rows(
+            ((mt.popmax[0].AF < 0.001) | hl.is_missing(mt.popmax[0].AF))
+            & (
+                (mt.v2_genomes_popmax[0].AF < 0.001)
+                | hl.is_missing(mt.v2_genomes_popmax[0].AF)
+            )
+            & (
+                (mt.v3_genomes_popmax.AF < 0.001)
+                | hl.is_missing(mt.v3_genomes_popmax.AF)
+            )
+        )
+        logger.info("Filtering duplicate samples found in the v3.1 non v2 subset...")
         meta_ht = filter_v3_1_samples(meta_ht)
         meta_ht, mt = get_random_samples_of_populations(mt, meta_ht, EXOME_POPS, 100)
         meta_ht = meta_ht.checkpoint(random_samples_path, overwrite=args.overwrite)
         mt = mt.checkpoint(random_samples_hardcalls_path, overwrite=args.overwrite)
 
+    gnomad_public_resource_configuration.source = GnomadPublicResourceSource.GNOMAD
     logger.info(
         "Filtering to PASS variants present in randomly sampled individuals, removing low confidence regions, and filtering VEP to canonical transcripts only..."
     )
