@@ -260,10 +260,9 @@ def main(args):
         "Filtering to PASS variants present in randomly sampled individuals, removing low confidence regions, and filtering VEP to canonical transcripts only..."
     )
     mt = mt.filter_rows(
-        (
-            hl.is_defined(mt.filters) & (hl.len(mt.filters) == 0)
-        )  # no need for these parentheses
-        & (hl.agg.any(mt.GT.is_non_ref()))  # no need for extra set of parentheses
+        hl.is_defined(mt.filters) 
+        & (hl.len(mt.filters) == 0)
+        & hl.agg.any(mt.GT.is_non_ref())
     )
     # checkpoint the mt later after filtering out for non_ref
 
