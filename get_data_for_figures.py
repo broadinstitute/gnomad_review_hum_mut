@@ -92,9 +92,7 @@ def get_random_samples_of_populations(mt, meta_ht, pops, n):
     selected_samples = set([])
     for pop in pops:
         random_samples = get_random_subset(meta_ht, n, pop)
-        selected_samples = selected_samples | set(
-            random_samples
-        )  # what's the preferred syntax for adding onto a set?
+        selected_samples |= set(random_samples)
     mt = filter_to_samples(mt, selected_samples)
     meta_ht = meta_ht.filter(hl.literal(selected_samples).contains(meta_ht.s))
     return meta_ht, mt
