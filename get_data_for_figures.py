@@ -64,7 +64,7 @@ def get_random_subset(meta_ht, n, pop):
 
 
 # filter to select samples
-def get_hardcalls_of_samples(mt, samples):
+def filter_to_samples(mt, samples):
     """
     Filter a MatrixTable to a specific set of samples found in `samples`.
 
@@ -95,7 +95,7 @@ def get_random_samples_of_populations(mt, meta_ht, pops, n):
         selected_samples = selected_samples | set(
             random_samples
         )  # what's the preferred syntax for adding onto a set?
-    mt = get_hardcalls_of_samples(mt, selected_samples)
+    mt = filter_to_samples(mt, selected_samples)
     meta_ht = meta_ht.filter(hl.literal(selected_samples).contains(meta_ht.s))
     return meta_ht, mt
 
@@ -267,15 +267,14 @@ def main(args):
     logger.info(
         "Getting the most severe consequence from the VEP annotation of the canonical transcript..."
     )
-    # consistency with naming index
-    most_severe_csq_summary = get_most_severe_consequence_for_summary(mt.rows())[
+    most_severe_csq_summary_indexed = get_most_severe_consequence_for_summary(mt.rows())[
         mt.row_key
     ]
     mt = mt.annotate_rows(
-        most_severe_csq=most_severe_csq_summary.most_severe_csq,
-        protein_coding=most_severe_csq_summary.protein_coding,
-        lof=most_severe_csq_summary.lof,
-        no_lof_flags=most_severe_csq_summary.no_lof_flags,
+        most_severe_csq=most_severe_csq_summary_indexed.most_severe_csq,
+        protein_coding=most_severe_csq_summary_indexed.protein_coding,
+        lof=most_severe_csq_summary_indexed.lof,
+        no_lof_flags=most_severe_csq_summary_indexed.no_lof_flags,
     )  # get_most_severe_consequence_for_summary works only on tables
 
     logger.info(
@@ -322,7 +321,6 @@ def main(args):
         f"{args.output_path_prefix}/random_samples_hardcalls_filtered{'_test' if args.test else ''}.mt",
         overwrite=args.overwrite,
     )
-    # add checkpoint for ht
     ht.write(
         f"{args.output_path_prefix}/samples_with_variants{'_test' if args.test else ''}.ht",
         overwrite=args.overwrite,
@@ -335,7 +333,7 @@ def main(args):
 
     logger.info(
         "Wrote out table with %s rows.", ht.count()
-    )  # checkpoint the ht before count
+    )
 
 
 if __name__ == "__main__":
@@ -344,7 +342,7 @@ if __name__ == "__main__":
         "This script generates all of the rare variants of interest from a random sample of individuals from each population present in gnomad exomes v.2.1.1"
     )
     parser.add_argument(
-        "--use_checkpoint",
+        "--use-checkpoint",
         action="store_true",
         help="Use previously checkpointed random sample if it exists.",
     )
@@ -354,13 +352,13 @@ if __name__ == "__main__":
         help="subset hardcalls table to a small number of partitions for testing.",
     )
     parser.add_argument(
-        "--test_n_partitions",
+        "--test-n-partitions",
         default=5,
         type=int,
         help="Number of partitions to use for testing.",
     )
     parser.add_argument(
-        "--output_path_prefix",
+        "--output-path-prefix",
         default="gs://gnomad-wphu/review-hum-mut",  # consider where path should go
         type=str,
         help="Google folder to store output.",
