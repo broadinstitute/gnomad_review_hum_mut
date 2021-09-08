@@ -9,7 +9,8 @@ from gnomad.resources.config import (
     gnomad_public_resource_configuration,
     GnomadPublicResourceSource,
 )
-from gnomad.resources.grch37.gnomad import EXOME_POPS, public_release
+from gnomad.resources.grch37.gnomad import EXOME_POPS, public_release as v2_public_release
+from gnomad.resources.grch38.gnomad import public_release as v3_public_release
 from gnomad.resources.resource_utils import DataException
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import filter_low_conf_regions, filter_to_adj
@@ -19,6 +20,8 @@ from gnomad.utils.vep import (
 )
 
 from gnomad_qc.v2.resources.basics import get_gnomad_data, get_gnomad_meta
+
+from file_utils import load_public_resources
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -197,7 +200,7 @@ def main(args):
         logger.info(
             "Reading in the gnomAD v2.1.1 release sites Hail Table to annotate with VEP, freq, popmax, and variant QC filters..."
         )
-        ht = public_release("exomes").ht()
+        ht = v2_public_release("exomes").ht()
 
         ht_indexed = ht[mt.row_key]
         mt = mt.annotate_rows(
@@ -208,15 +211,7 @@ def main(args):
         )
 
         logger.info("Reading in v2 genomes, v3 genomes, and v2 liftover tables.")
-        v2_genomes = hl.read_table(
-            "gs://gcp-public-data--gnomad/release/2.1.1/ht/genomes/gnomad.genomes.r2.1.1.sites.ht"
-        )
-        v3_genomes = hl.read_table(
-            "gs://gcp-public-data--gnomad/release/3.1.1/ht/genomes/gnomad.genomes.v3.1.1.sites.ht"
-        )
-        v2_liftover = hl.read_table(
-            "gs://gcp-public-data--gnomad/release/2.1.1/liftover_grch38/ht/exomes/gnomad.exomes.r2.1.1.sites.liftover_grch38.ht"
-        )
+        v2_genomes, v3_genomes, v2_liftover = load_public_resources()
         v2_liftover = v2_liftover.key_by("original_locus", "original_alleles")
         # annotate liftover locus onto MT
         v2_liftover_index = v2_liftover[mt.row_key]
