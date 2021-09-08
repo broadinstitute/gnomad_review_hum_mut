@@ -3,6 +3,8 @@ import logging
 
 import hail as hl
 
+from file_utils import load_public_resources
+
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
@@ -15,15 +17,7 @@ def main(args):
     logger.info("Loading variant table, v2 genomes, v3 variants, and v2 liftover...")
     ht = hl.read_table(args.sample_with_variants_path)
     original_count = ht.count()
-    v2_genomes_ht = hl.read_table(
-        "gs://gcp-public-data--gnomad/release/2.1.1/ht/genomes/gnomad.genomes.r2.1.1.sites.ht"
-    )
-    v3_genomes_ht = hl.read_table(
-        "gs://gcp-public-data--gnomad/release/3.1.1/ht/genomes/gnomad.genomes.v3.1.1.sites.ht"
-    )
-    v2_exome_liftover_ht = hl.read_table(
-        "gs://gcp-public-data--gnomad/release/2.1.1/liftover_grch38/ht/exomes/gnomad.exomes.r2.1.1.sites.liftover_grch38.ht"
-    )
+    v2_genomes_ht, v3_genomes_ht, v2_exome_liftover_ht = load_public_resources()
     v2_exome_liftover_ht = v2_exome_liftover_ht.key_by(
         "original_locus", "original_alleles"
     )
