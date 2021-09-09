@@ -14,7 +14,7 @@ gnomad_public_resource_configuration.source = (
 
 def load_public_resources():
     '''
-    Return public resources for x, y, z.
+    Return public resources for v2 genomes, v3 genomes, and v2 liftover variants.
     '''
     v2_genomes = v2_public_release("genomes").ht()
     v3_genomes = v3_public_release("genomes").ht()

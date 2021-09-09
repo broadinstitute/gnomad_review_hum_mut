@@ -222,24 +222,16 @@ def main(args):
         # get v2 exome variants from v2 genomes and v3 genomes, and annotate their respective AF
         v2_genomes_indexed = v2_genomes[mt.row_key]
         v3_genomes_indexed = v3_genomes[mt.liftover_locus, mt.liftover_allele]
-        mt = mt.annotate_rows(
-            v2_genomes_popmax=v2_genomes_indexed.popmax,
-            v3_genomes_popmax=v3_genomes_indexed.popmax,
-        )
         logger.info(
             "Filtering to variants with a popmax allele frequency of less than .001 in v2_exomes, AND v2_genomes, AND v3_genomes..."
         )
         # Filter to only variants with a popmax allele frequency of < 0.1% in v2_exomes, AND v2_genomes, AND v3_genomes
+        # Because popmax AF is used, there are some v2 variants that return NA for popmax.
+        # These variants should still be kept - to avoid losing variants that are only found in non-popmax populations, or are undefined in v2 genomes and v3 genomes, but exist in v2 exomes.
         mt = mt.filter_rows(
-            ((mt.popmax[0].AF < 0.001) | hl.is_missing(mt.popmax[0].AF))
-            & (
-                (mt.v2_genomes_popmax[0].AF < 0.001)
-                | hl.is_missing(mt.v2_genomes_popmax[0].AF)
-            )
-            & (
-                (mt.v3_genomes_popmax.AF < 0.001)
-                | hl.is_missing(mt.v3_genomes_popmax.AF)
-            )
+            hl.or_else(mt.popmax[0].AF < 0.001, True)
+            & hl.or_else(v2_genomes_indexed.popmax[0].AF < 0.001, True)
+            & hl.or_else(v3_genomes_indexed.popmax.AF < 0.001, True)
         )
         logger.info("Filtering duplicate samples found in the v3.1 non v2 subset...")
         meta_ht = filter_v3_1_samples(meta_ht)
@@ -335,7 +327,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # change underscores to dashes
     parser = argparse.ArgumentParser(
         "This script generates all of the rare variants of interest from a random sample of individuals from each population present in gnomad exomes v.2.1.1"
     )
@@ -357,7 +348,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--output-path-prefix",
-        default="gs://gnomad-wphu/review-hum-mut",  # consider where path should go
+        default="gs://gnomad-wphu/review-hum-mut",
         type=str,
         help="Google folder to store output.",
     )
