@@ -221,7 +221,7 @@ def main(args):
         )
         # get v2 exome variants from v2 genomes and v3 genomes, and annotate their respective AF
         v2_genomes_indexed = v2_genomes[mt.row_key]
-        v3_genomes_indexed = v3_genomes[mt.liftover_locus, mt.liftover_allele]
+        v3_genomes_indexed = v3_genomes_ht[mt.liftover_locus, mt.liftover_allele]
         logger.info(
             "Filtering to variants with a popmax allele frequency of less than .001 in v2_exomes, AND v2_genomes, AND v3_genomes..."
         )
