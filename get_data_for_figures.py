@@ -214,7 +214,7 @@ def main(args):
         v2_genomes, v3_genomes, v2_liftover = load_public_resources()
         v2_liftover = v2_liftover.key_by("original_locus", "original_alleles")
         # annotate liftover locus onto MT
-        v2_liftover_index = v2_liftover[mt.row_key]
+        v2_liftover_index = v2_liftover_ht[mt.row_key]
         mt = mt.annotate_rows(
             liftover_locus=v2_liftover_index.locus,
             liftover_allele=v2_liftover_index.alleles,
