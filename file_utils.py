@@ -18,7 +18,7 @@ def load_public_resources():
     '''
     v2_genomes_ht = v2_public_release("genomes").ht()
     v3_genomes_ht = v3_public_release("genomes").ht()
-    v2_liftover = hl.read_table(
+    v2_liftover_ht = hl.read_table(
         "gs://gcp-public-data--gnomad/release/2.1.1/liftover_grch38/ht/exomes/gnomad.exomes.r2.1.1.sites.liftover_grch38.ht"
     )
     return v2_genomes, v3_genomes, v2_liftover
