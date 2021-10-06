@@ -211,7 +211,7 @@ def main(args):
         )
 
         logger.info("Reading in v2 genomes, v3 genomes, and v2 liftover tables.")
-        v2_genomes, v3_genomes, v2_liftover = load_public_resources()
+        v2_genomes_ht, v3_genomes_ht, v2_liftover_ht = load_public_resources()
         v2_liftover = v2_liftover.key_by("original_locus", "original_alleles")
         # annotate liftover locus onto MT
         v2_liftover_index = v2_liftover_ht[mt.row_key]
