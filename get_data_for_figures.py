@@ -131,8 +131,9 @@ def filter_hardcalls_variants_interest(mt):
 
 def filter_v3_1_samples(meta_ht):
     """
-    Filter samples to those that are not found in the v3.1 non-v2 subset. A few samples from v2 were found to be samples in the non_v2 v3 subset.
-    As a workaround, this removes any of those samples from the meta_ht
+    Filter samples to those that are not found in the v3.1 non-v2 subset. 
+    
+    A few samples from v2 were found to be samples in the non_v2 v3 subset. As a workaround, this removes any of those samples from the meta_ht
 
     :param meta_ht: the hail table containing the v2 exome sample meta.
     """
