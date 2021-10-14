@@ -224,7 +224,7 @@ def main(args):
         v2_genomes_indexed = v2_genomes_ht[mt.row_key]
         v3_genomes_indexed = v3_genomes_ht[mt.liftover_locus, mt.liftover_allele]
         logger.info(
-            "Filtering to variants with a popmax allele frequency of less than .001 in v2_exomes, AND v2_genomes, AND v3_genomes..."
+            "Filtering to variants with a popmax allele frequency of less than .001 (0.1%) in v2_exomes, AND v2_genomes, AND v3_genomes..."
         )
         # Filter to only variants with a popmax allele frequency of < 0.1% in v2_exomes, AND v2_genomes, AND v3_genomes
         # Because popmax AF is used, there are some v2 variants that return NA for popmax.
