@@ -183,6 +183,7 @@ def main(args):
         try:
             mt = get_gnomad_data("exomes")
         except:
+            logger.info("gnomAD v2.1.1 exome hardcalls MatrixTable has been moved from the location specified in get_gnomad_data. Retreiving MT from codeline storage.")
             mt = hl.read_matrix_table(
                 "gs://gnomad_v2/hardcalls/hail-0.2/mt/exomes/gnomad.exomes.mt"
             )
@@ -213,7 +214,6 @@ def main(args):
 
         logger.info("Reading in v2 genomes, v3 genomes, and v2 liftover tables.")
         v2_genomes_ht, v3_genomes_ht, v2_liftover_ht = load_public_resources()
-        v2_liftover = v2_liftover.key_by("original_locus", "original_alleles")
         # annotate liftover locus onto MT
         v2_liftover_index = v2_liftover_ht[mt.row_key]
         mt = mt.annotate_rows(

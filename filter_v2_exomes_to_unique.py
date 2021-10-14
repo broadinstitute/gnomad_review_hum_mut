@@ -18,9 +18,6 @@ def main(args):
     ht = hl.read_table(args.sample_with_variants_path)
     original_count = ht.count()
     v2_genomes_ht, v3_genomes_ht, v2_exome_liftover_ht = load_public_resources()
-    v2_exome_liftover_ht = v2_exome_liftover_ht.key_by(
-        "original_locus", "original_alleles"
-    )
     v2_liftover_index = v2_exome_liftover_ht[ht.key]
     ht = ht.annotate(
         liftover_locus=v2_liftover_index.locus,
