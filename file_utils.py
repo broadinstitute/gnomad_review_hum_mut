@@ -1,13 +1,14 @@
 import hail as hl
 import logging
-from gnomad.resources.grch37.gnomad import public_release as v2_public_release
-from gnomad.resources.grch38.gnomad import public_release as v3_public_release
-from gnomad.resources.resource_utils import DataException
+from typing import Tuple
 
 from gnomad.resources.config import (
     gnomad_public_resource_configuration,
     GnomadPublicResourceSource,
 )
+from gnomad.resources.grch37.gnomad import public_release as v2_public_release
+from gnomad.resources.grch38.gnomad import public_release as v3_public_release
+from gnomad.resources.resource_utils import DataException
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -20,7 +21,8 @@ gnomad_public_resource_configuration.source = (
     GnomadPublicResourceSource.GOOGLE_CLOUD_PUBLIC_DATASETS
 )
 
-def load_public_resources():
+
+def load_public_resources() -> Tuple[hl.Table, hl.Table, hl.Table]:
     '''
     Return public resources for v2 genomes, v3 genomes, and v2 liftover variants.
     '''

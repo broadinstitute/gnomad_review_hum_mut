@@ -1,6 +1,7 @@
 import argparse
 import logging
 import random
+from typing import List, Set, Tuple
 
 import hail as hl
 from hail.expr.functions import is_missing
@@ -45,13 +46,14 @@ MISSENSE_INDEL_VEP = {"missense_variant", "inframe_insertion", "inframe_deletion
 SYNONYMOUS_VEP = {"synonymous_variant"}
 
 
-def get_random_subset(meta_ht, n, pop):
+def get_random_subset(meta_ht: hl.Table, n: int, pop: str) -> List[str]:
     """
     Return a random subset of `n` samples from population `pop` defined by pop in the `meta_ht`.
 
     :param meta_ht: Sample metadata table
     :param n: Size of random sample sample
-    :param pop: population to select from
+    :param pop: Population to select from
+    :return: List of random samples
     """
     subpop_ht = meta_ht.filter(meta_ht.pop == pop)
     subpop_samples = subpop_ht.s.collect()
@@ -66,12 +68,13 @@ def get_random_subset(meta_ht, n, pop):
         )
 
 
-def filter_to_samples(mt, samples):
+def filter_to_samples(mt: hl.MatrixTable, samples: Set[str]) -> hl.MatrixTable:
     """
     Filter a MatrixTable to a specific set of samples found in `samples`.
 
     :param mt: MatrixTable to filter
     :param samples: Set of specific samples in `mt` to filter to
+    :return: MatrixTable `mt` filtered to samples in `samples`
     """
     mt = mt.filter_cols(hl.literal(samples).contains(mt.s))
     if len(samples) != mt.count_cols():
@@ -82,7 +85,7 @@ def filter_to_samples(mt, samples):
         return mt
 
 
-def get_random_samples_of_populations(mt, meta_ht, pops, n):
+def get_random_samples_of_populations(mt: hl.MatrixTable, meta_ht: hl.Table, pops: List[str], n: int) -> Tuple[hl.Table, hl.MatrixTable]:
     """
     Get a random sample of `n` columns in `mt` from each population in `pops`.
 
@@ -100,7 +103,7 @@ def get_random_samples_of_populations(mt, meta_ht, pops, n):
     return meta_ht, mt
 
 
-def filter_hardcalls_variants_interest(mt):
+def filter_hardcalls_variants_interest(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
     Annotate variants with a `group` annotations and filter to only those in groups of interest (missense, synonymous, and pLOF).
 
@@ -112,6 +115,7 @@ def filter_hardcalls_variants_interest(mt):
     Must include the `most_severe_csq` and `lof` annotations on `mt`.
 
     :param mt: Input MatrixTable
+    :return: MatrixTable filtered to rows of interest
     """
     mt = mt.annotate_rows(
         group=hl.case()
@@ -128,16 +132,17 @@ def filter_hardcalls_variants_interest(mt):
     return mt.filter_rows(hl.is_defined(mt.group))
 
 
-def filter_v3_1_samples(meta_ht):
+def filter_v3_1_samples(meta_ht: hl.Table) -> hl.Table:
     """
-    Filter samples to those that are not found in the v3.1 non-v2 subset. 
+    Filter out v2 samples that are also found in the new v3.1 sample set (those that were added to v3). 
     
-    A few samples from v2 were found to be samples in the non_v2 v3 subset. As a workaround, this removes any of those samples from the meta_ht
+    A few samples from v2 were found to be samples in the non_v2 v3.1 subset because the duplication identification was only performed between v2 and v3 samples, not taking into account the additional samples that were added in the v3.1 release. As a workaround, this removes any of those samples from the meta_ht so they can't be chosen during random sampling and therefore the non_v2 subset frequency counts can be used appropriately. 
 
-    :param meta_ht: the hail table containing the v2 exome sample meta.
+    :param meta_ht: Hail Table containing the v2 exome sample meta.
+    :return: Input meta Table filtered to samples that are not duplicates in v3.1 samples
     """
     ht = hl.read_table(
-        "gs://gnomad-julia/review-hum-mut/v2_exomes_v3.1_new_samples_relatedness.ht"
+        "gs://gnomad/sample_qc/ht/genomes_v3.1/gnomad__v2_v3.1_new_samples_only_release_relatedness.ht"
     )
     v31_in_v2_ht = ht.filter(
         (
@@ -219,7 +224,7 @@ def main(args):
             liftover_locus=v2_liftover_index.locus,
             liftover_allele=v2_liftover_index.alleles,
         )
-        # get v2 exome variants from v2 genomes and v3 genomes, and annotate their respective AF
+        # Get v2 exome variants from v2 genomes and v3 genomes, and annotate their respective AF
         v2_genomes_indexed = v2_genomes_ht[mt.row_key]
         v3_genomes_indexed = v3_genomes_ht[mt.liftover_locus, mt.liftover_allele]
         logger.info(
@@ -239,7 +244,7 @@ def main(args):
         meta_ht = meta_ht.checkpoint(random_samples_path, overwrite=args.overwrite)
         mt = mt.checkpoint(random_samples_hardcalls_path, overwrite=args.overwrite)
     
-    #currently filter_low_conf_regions is trying to access a resource (lcr_regions) that's in a gnomad_requester_pays_bucket - cannot access it through google cloud.
+    # Currently filter_low_conf_regions is trying to access a resource (lcr_regions) that's in a gnomad_requester_pays_bucket - cannot access it through google cloud.
     gnomad_public_resource_configuration.source = GnomadPublicResourceSource.GNOMAD
     logger.info(
         "Filtering to PASS variants present in randomly sampled individuals, removing low confidence regions, and filtering VEP to canonical transcripts only..."
@@ -249,7 +254,6 @@ def main(args):
         & (hl.len(mt.filters) == 0)
         & hl.agg.any(mt.GT.is_non_ref())
     )
-    # checkpoint the mt later after filtering out for non_ref
 
     mt = filter_low_conf_regions(mt)
     mt = filter_vep_to_canonical_transcripts(mt)
@@ -273,7 +277,7 @@ def main(args):
     mt = filter_to_adj(mt)
     mt = mt.filter_rows(
         hl.agg.any(mt.GT.is_non_ref())
-    )  # is there a reason for having the second non_ref filter? othw move filter_to_adj above?
+    ) 
     logger.info(
         "Annotating and filtering the MT to only to variants with a VEP consequence of interest..."
     )

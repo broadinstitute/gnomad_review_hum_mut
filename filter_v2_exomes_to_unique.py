@@ -31,7 +31,7 @@ def main(args):
     ht = ht.annotate(
         v2_genomes_adj_freq=v2_genomes_ht[ht.key].freq[freq_adj_idx]
     )
-    #Keep variants that are undefined using the or_else function.
+    # Keep variants that are undefined.
     ht = ht.filter(hl.or_else(ht.v2_genomes_adj_freq.AC == 0, True))
     freq_adj_idx = hl.eval(v3_genomes_ht.freq_meta.index(
         {"group": "adj", "subset": "non_v2"}
@@ -41,7 +41,7 @@ def main(args):
             freq_adj_idx
         ]
     )
-    #Keep variants that are undefined.
+    # Keep variants that are undefined.
     ht = ht.filter(hl.or_else(ht.v3_non_v2_adj_freq.AC == 0, True))
 
     logger.info(
