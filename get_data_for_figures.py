@@ -66,7 +66,6 @@ def get_random_subset(meta_ht, n, pop):
         )
 
 
-# filter to select samples
 def filter_to_samples(mt, samples):
     """
     Filter a MatrixTable to a specific set of samples found in `samples`.
