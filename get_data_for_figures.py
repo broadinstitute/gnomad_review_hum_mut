@@ -1,14 +1,17 @@
 import argparse
 import logging
 import random
+from typing import List, Set, Tuple
 
 import hail as hl
+from hail.expr.functions import is_missing
 
 from gnomad.resources.config import (
     gnomad_public_resource_configuration,
     GnomadPublicResourceSource,
 )
-from gnomad.resources.grch37.gnomad import EXOME_POPS, public_release
+from gnomad.resources.grch37.gnomad import EXOME_POPS, public_release as v2_public_release
+from gnomad.resources.grch38.gnomad import public_release as v3_public_release
 from gnomad.resources.resource_utils import DataException
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import filter_low_conf_regions, filter_to_adj
@@ -19,12 +22,18 @@ from gnomad.utils.vep import (
 
 from gnomad_qc.v2.resources.basics import get_gnomad_data, get_gnomad_meta
 
+from file_utils import load_public_resources
+
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
 )
 logger = logging.getLogger("generate_figures")
 logger.setLevel(logging.INFO)
+
+gnomad_public_resource_configuration.source = (
+    GnomadPublicResourceSource.GOOGLE_CLOUD_PUBLIC_DATASETS
+)
 
 EXOME_POPS = [pop.lower() for pop in EXOME_POPS]
 LOF_VEP = {
@@ -37,13 +46,14 @@ MISSENSE_INDEL_VEP = {"missense_variant", "inframe_insertion", "inframe_deletion
 SYNONYMOUS_VEP = {"synonymous_variant"}
 
 
-def get_random_subset(meta_ht, n, pop):
+def get_random_subset(meta_ht: hl.Table, n: int, pop: str) -> List[str]:
     """
     Return a random subset of `n` samples from population `pop` defined by pop in the `meta_ht`.
-    
+
     :param meta_ht: Sample metadata table
     :param n: Size of random sample sample
-    :param pop: population to select from
+    :param pop: Population to select from
+    :return: List of random samples
     """
     subpop_ht = meta_ht.filter(meta_ht.pop == pop)
     subpop_samples = subpop_ht.s.collect()
@@ -57,13 +67,14 @@ def get_random_subset(meta_ht, n, pop):
             f"There are fewer total samples than the requested random sample size in the population: {pop}."
         )
 
-#filter to select samples
-def get_hardcalls_of_samples(mt, samples):
+
+def filter_to_samples(mt: hl.MatrixTable, samples: Set[str]) -> hl.MatrixTable:
     """
     Filter a MatrixTable to a specific set of samples found in `samples`.
-    
+
     :param mt: MatrixTable to filter
     :param samples: Set of specific samples in `mt` to filter to
+    :return: MatrixTable `mt` filtered to samples in `samples`
     """
     mt = mt.filter_cols(hl.literal(samples).contains(mt.s))
     if len(samples) != mt.count_cols():
@@ -74,10 +85,10 @@ def get_hardcalls_of_samples(mt, samples):
         return mt
 
 
-def get_random_samples_of_populations(mt, meta_ht, pops, n):
+def get_random_samples_of_populations(mt: hl.MatrixTable, meta_ht: hl.Table, pops: List[str], n: int) -> Tuple[hl.Table, hl.MatrixTable]:
     """
     Get a random sample of `n` columns in `mt` from each population in `pops`.
-    
+
     :param mt: Input MatrixTable
     :param meta_ht: Sample metadata Table
     :param pops: List of populations to select samples from
@@ -86,24 +97,25 @@ def get_random_samples_of_populations(mt, meta_ht, pops, n):
     selected_samples = set([])
     for pop in pops:
         random_samples = get_random_subset(meta_ht, n, pop)
-        selected_samples = selected_samples | set(random_samples) #what's the preferred syntax for adding onto a set?
-    mt = get_hardcalls_of_samples(mt, selected_samples)
+        selected_samples |= set(random_samples)
+    mt = filter_to_samples(mt, selected_samples)
     meta_ht = meta_ht.filter(hl.literal(selected_samples).contains(meta_ht.s))
     return meta_ht, mt
 
 
-def filter_hardcalls_variants_interest(mt):
+def filter_hardcalls_variants_interest(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
     Annotate variants with a `group` annotations and filter to only those in groups of interest (missense, synonymous, and pLOF).
-    
+
     The following annotations are used to define the variants of interest:
         - pLOF (splice disrupting, nonsense variants, frameshift variants) that are predicted high-confidence (HC) by LOFTEE. VEP annotations: splice_acceptor, splice_donor_variant, stop_gained, frameshift_variant (that pass LOFTEE HC)
         - Missense variants and indels. VEP annotations: missense_variant, inframe_insertion, inframe_deletion
         - Synonymous variants. VEP annotations: synonymous_variant
-        
+
     Must include the `most_severe_csq` and `lof` annotations on `mt`.
-    
+
     :param mt: Input MatrixTable
+    :return: MatrixTable filtered to rows of interest
     """
     mt = mt.annotate_rows(
         group=hl.case()
@@ -120,17 +132,31 @@ def filter_hardcalls_variants_interest(mt):
     return mt.filter_rows(hl.is_defined(mt.group))
 
 
-def filter_v3_1_samples(meta_ht):
-    ht = hl.read_table("gs://gnomad-julia/review-hum-mut/v2_exomes_v3.1_new_samples_relatedness.ht")
+def filter_v3_1_samples(meta_ht: hl.Table) -> hl.Table:
+    """
+    Filter out v2 samples that are also found in the new v3.1 sample set (those that were added to v3). 
+    
+    A few samples from v2 were found to be samples in the non_v2 v3.1 subset because the duplication identification was only performed between v2 and v3 samples, not taking into account the additional samples that were added in the v3.1 release. As a workaround, this removes any of those samples from the meta_ht so they can't be chosen during random sampling and therefore the non_v2 subset frequency counts can be used appropriately. 
+
+    :param meta_ht: Hail Table containing the v2 exome sample meta.
+    :return: Input meta Table filtered to samples that are not duplicates in v3.1 samples
+    """
+    ht = hl.read_table(
+        "gs://gnomad/sample_qc/ht/genomes_v3.1/gnomad__v2_v3.1_new_samples_only_release_relatedness.ht"
+    )
     v31_in_v2_ht = ht.filter(
         (
-            (ht.i.data_type == "v3_genomes") | (ht.j.data_type == "v3_genomes")
-            & ~(ht.i.data_type == "v3_genomes") & (ht.j.data_type == "v3_genomes")
+            (ht.i.data_type == "v3_genomes")
+            | (ht.j.data_type == "v3_genomes")
+            & ~(ht.i.data_type == "v3_genomes")
+            & (ht.j.data_type == "v3_genomes")
         )
     )
 
     v31_in_v2_ht = v31_in_v2_ht.filter(v31_in_v2_ht.ibd2 > 0.4).select()
-    dup_list = hl.literal(set(v31_in_v2_ht.i.s.collect()) | set(v31_in_v2_ht.j.s.collect()))
+    dup_list = hl.literal(
+        set(v31_in_v2_ht.i.s.collect()) | set(v31_in_v2_ht.j.s.collect())
+    )
     meta_ht = meta_ht.filter(~dup_list.contains(meta_ht.s))
 
     return meta_ht
@@ -158,7 +184,13 @@ def main(args):
             )
     else:
         logger.info("Reading in gnomAD v2.1.1 exome hardcalls MatrixTable...")
-        mt = get_gnomad_data("exomes")
+        try:
+            mt = get_gnomad_data("exomes")
+        except:
+            logger.info("gnomAD v2.1.1 exome hardcalls MatrixTable has been moved from the location specified in get_gnomad_data. Retreiving MT from codeline storage.")
+            mt = hl.read_matrix_table(
+                "gs://gnomad_v2/hardcalls/hail-0.2/mt/exomes/gnomad.exomes.mt"
+            )
 
         if args.test:
             mt = mt._filter_partitions(range(args.test_n_partitions))
@@ -174,10 +206,7 @@ def main(args):
         logger.info(
             "Reading in the gnomAD v2.1.1 release sites Hail Table to annotate with VEP, freq, popmax, and variant QC filters..."
         )
-        gnomad_public_resource_configuration.source = (
-            GnomadPublicResourceSource.GOOGLE_CLOUD_PUBLIC_DATASETS
-        )
-        ht = public_release("exomes").ht()
+        ht = v2_public_release("exomes").ht()
 
         ht_indexed = ht[mt.row_key]
         mt = mt.annotate_rows(
@@ -187,21 +216,44 @@ def main(args):
             popmax=ht_indexed.popmax,
         )
 
-        # Filter to only variants with a popmax allele frequency of 0.1%
-        mt = mt.filter_rows(mt.popmax[0].AF < 0.001)
+        logger.info("Reading in v2 genomes, v3 genomes, and v2 liftover tables.")
+        v2_genomes_ht, v3_genomes_ht, v2_liftover_ht = load_public_resources()
+        # annotate liftover locus onto MT
+        v2_liftover_index = v2_liftover_ht[mt.row_key]
+        mt = mt.annotate_rows(
+            liftover_locus=v2_liftover_index.locus,
+            liftover_allele=v2_liftover_index.alleles,
+        )
+        # Get v2 exome variants from v2 genomes and v3 genomes, and annotate their respective AF
+        v2_genomes_indexed = v2_genomes_ht[mt.row_key]
+        v3_genomes_indexed = v3_genomes_ht[mt.liftover_locus, mt.liftover_allele]
+        logger.info(
+            "Filtering to variants with a popmax allele frequency of less than .001 (0.1%) in v2_exomes, AND v2_genomes, AND v3_genomes..."
+        )
+        # Filter to only variants with a popmax allele frequency of < 0.1% in v2_exomes, AND v2_genomes, AND v3_genomes
+        # Because popmax AF is used, there are some v2 variants that return NA for popmax.
+        # These variants should still be kept - to avoid losing variants that are only found in non-popmax populations, or are undefined in v2 genomes and v3 genomes, but exist in v2 exomes.
+        mt = mt.filter_rows(
+            hl.or_else(mt.popmax[0].AF < 0.001, True)
+            & hl.or_else(v2_genomes_indexed.popmax[0].AF < 0.001, True)
+            & hl.or_else(v3_genomes_indexed.popmax.AF < 0.001, True)
+        )
+        logger.info("Filtering duplicate samples found in the v3.1 non v2 subset...")
         meta_ht = filter_v3_1_samples(meta_ht)
         meta_ht, mt = get_random_samples_of_populations(mt, meta_ht, EXOME_POPS, 100)
         meta_ht = meta_ht.checkpoint(random_samples_path, overwrite=args.overwrite)
         mt = mt.checkpoint(random_samples_hardcalls_path, overwrite=args.overwrite)
-
+    
+    # Currently filter_low_conf_regions is trying to access a resource (lcr_regions) that's in a gnomad_requester_pays_bucket - cannot access it through google cloud.
+    gnomad_public_resource_configuration.source = GnomadPublicResourceSource.GNOMAD
     logger.info(
         "Filtering to PASS variants present in randomly sampled individuals, removing low confidence regions, and filtering VEP to canonical transcripts only..."
     )
     mt = mt.filter_rows(
-        (hl.is_defined(mt.filters) & (hl.len(mt.filters) == 0)) #no need for these parentheses
-        & (hl.agg.any(mt.GT.is_non_ref())) #no need for extra set of parentheses
+        hl.is_defined(mt.filters) 
+        & (hl.len(mt.filters) == 0)
+        & hl.agg.any(mt.GT.is_non_ref())
     )
-    #checkpoint the mt later after filtering out for non_ref
 
     mt = filter_low_conf_regions(mt)
     mt = filter_vep_to_canonical_transcripts(mt)
@@ -209,22 +261,23 @@ def main(args):
     logger.info(
         "Getting the most severe consequence from the VEP annotation of the canonical transcript..."
     )
-    #consistency with naming index 
-    most_severe_csq_summary = get_most_severe_consequence_for_summary(mt.rows())[
+    most_severe_csq_summary_indexed = get_most_severe_consequence_for_summary(mt.rows())[
         mt.row_key
     ]
     mt = mt.annotate_rows(
-        most_severe_csq=most_severe_csq_summary.most_severe_csq,
-        protein_coding=most_severe_csq_summary.protein_coding,
-        lof=most_severe_csq_summary.lof,
-        no_lof_flags=most_severe_csq_summary.no_lof_flags,
+        most_severe_csq=most_severe_csq_summary_indexed.most_severe_csq,
+        protein_coding=most_severe_csq_summary_indexed.protein_coding,
+        lof=most_severe_csq_summary_indexed.lof,
+        no_lof_flags=most_severe_csq_summary_indexed.no_lof_flags,
     )  # get_most_severe_consequence_for_summary works only on tables
 
     logger.info(
         "Filtering genotypes to adj and the matrix table to variants with at least one non ref after adj filtering..."
     )
     mt = filter_to_adj(mt)
-    mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref())) #is there a reason for having the second non_ref filter? othw move filter_to_adj above?
+    mt = mt.filter_rows(
+        hl.agg.any(mt.GT.is_non_ref())
+    ) 
     logger.info(
         "Annotating and filtering the MT to only to variants with a VEP consequence of interest..."
     )
@@ -262,7 +315,6 @@ def main(args):
         f"{args.output_path_prefix}/random_samples_hardcalls_filtered{'_test' if args.test else ''}.mt",
         overwrite=args.overwrite,
     )
-    #add checkpoint for ht
     ht.write(
         f"{args.output_path_prefix}/samples_with_variants{'_test' if args.test else ''}.ht",
         overwrite=args.overwrite,
@@ -273,16 +325,17 @@ def main(args):
             header=True,
         )
 
-    logger.info("Wrote out table with %s rows.", ht.count()) #checkpoint the ht before count
+    logger.info(
+        "Wrote out table with %s rows.", ht.count()
+    )
 
 
 if __name__ == "__main__":
-    #change underscores to dashes
     parser = argparse.ArgumentParser(
         "This script generates all of the rare variants of interest from a random sample of individuals from each population present in gnomad exomes v.2.1.1"
     )
     parser.add_argument(
-        "--use_checkpoint",
+        "--use-checkpoint",
         action="store_true",
         help="Use previously checkpointed random sample if it exists.",
     )
@@ -292,14 +345,14 @@ if __name__ == "__main__":
         help="subset hardcalls table to a small number of partitions for testing.",
     )
     parser.add_argument(
-        "--test_n_partitions",
+        "--test-n-partitions",
         default=5,
         type=int,
         help="Number of partitions to use for testing.",
     )
     parser.add_argument(
-        "--output_path_prefix",
-        default="gs://gnomad-wphu/review-hum-mut", #consider where path should go
+        "--output-path-prefix",
+        default="gs://gnomad-wphu/review-hum-mut",
         type=str,
         help="Google folder to store output.",
     )
