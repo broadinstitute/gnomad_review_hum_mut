@@ -191,10 +191,10 @@ def main(args):
         logger.info(
             "Reading in the gnomAD v2.1.1 metadata HailTable from 2018-10-11 and filtering to only release samples (releasable and pass sample QC)..."
         )
-        meta_ht = get_gnomad_meta("exomes")
+        #meta_ht = get_gnomad_meta("exomes")
 
         # Filter metadata to release samples
-        meta_ht = meta_ht.filter(meta_ht.release)
+        #meta_ht = meta_ht.filter(meta_ht.release)
 
         #logger.info(
         #    "Reading in the gnomAD v2.1.1 release sites Hail Table to annotate with VEP, freq, popmax, and variant QC filters..."
@@ -307,10 +307,10 @@ def main(args):
     #    pop=random_samples_pop_map[ht.samples_with_variant]
     #)  # does not require a shuffle this way
 
-    meta_ht.write(
-        f"{args.output_path_prefix}/random_samples_metadata{'_test' if args.test else ''}.ht",
-        overwrite=args.overwrite,
-    )
+    #meta_ht.write(
+    #    f"{args.output_path_prefix}/random_samples_metadata{'_test' if args.test else ''}.ht",
+    #    overwrite=args.overwrite,
+    #)
     mt.write(
         f"{args.output_path_prefix}/random_samples_hardcalls_filtered{'_test' if args.test else ''}.mt",
         overwrite=args.overwrite,
