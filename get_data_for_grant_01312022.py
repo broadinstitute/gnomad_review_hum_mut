@@ -167,16 +167,13 @@ def main(args):
     random.seed(1)
 
     tmp_path = "gs://gnomad-tmp/"
-    random_samples_path = (
-        f"{tmp_path}rdg_grant/random_samples{'_test' if args.test else ''}.ht"
-    )
+    #random_samples_path = (
+    #    f"{tmp_path}rdg_grant/random_samples{'_test' if args.test else ''}.ht"
+    #)
     random_samples_hardcalls_path = f"{tmp_path}rdg_grant/random_samples_hardcalls{'_test' if args.test else ''}.mt"
 
     if args.use_checkpoint:
-        if file_exists(random_samples_path) and file_exists(
-            random_samples_hardcalls_path
-        ):
-            meta_ht = hl.read_table(random_samples_path)
+        if file_exists(random_samples_hardcalls_path):
             mt = hl.read_matrix_table(random_samples_hardcalls_path)
         else:
             raise DataException(
@@ -248,7 +245,7 @@ def main(args):
         mt = mt.checkpoint(random_samples_hardcalls_path, overwrite=args.overwrite)
     
     # Currently filter_low_conf_regions is trying to access a resource (lcr_regions) that's in a gnomad_requester_pays_bucket - cannot access it through google cloud.
-    gnomad_public_resource_configuration.source = GnomadPublicResourceSource.GNOMAD
+    #gnomad_public_resource_configuration.source = GnomadPublicResourceSource.GNOMAD
     logger.info(
         "Filtering to PASS variants present in randomly sampled individuals, removing low confidence regions, and filtering VEP to canonical transcripts only..."
     )
@@ -258,7 +255,7 @@ def main(args):
         & hl.agg.any(mt.GT.is_non_ref())
     )
 
-    mt = filter_low_conf_regions(mt)
+    mt = filter_low_conf_regions(mt, filter_decoy=False)
     mt = filter_vep_to_canonical_transcripts(mt)
 
     logger.info(
