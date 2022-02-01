@@ -199,12 +199,27 @@ def main(args):
         # Filter metadata to release samples
         meta_ht = meta_ht.filter(meta_ht.release)
 
-        logger.info(
-            "Reading in the gnomAD v2.1.1 release sites Hail Table to annotate with VEP, freq, popmax, and variant QC filters..."
-        )
+        #logger.info(
+        #    "Reading in the gnomAD v2.1.1 release sites Hail Table to annotate with VEP, freq, popmax, and variant QC filters..."
+        #)
+
         ht = v2_public_release("exomes").ht()
 
-        ht_indexed = ht[mt.row_key]
+        logger.info("Reading in v2 genomes, v3 genomes, and v2 liftover tables.")
+        v2_genomes_ht, v3_genomes_ht, _ = load_public_resources()
+        v2_exome_liftover_ht = hl.read_table(
+            "gs://gcp-public-data--gnomad/release/2.1.1/liftover_grch38/ht/exomes/gnomad.exomes.r2.1.1.sites.liftover_grch38.ht"
+        )
+
+        logger.info("Add info from v2 exomes, genomes, and v3")
+        #annotate grch37 locus onto MT
+        v2_liftover_index = v2_exome_liftover_ht[mt.row_key]
+        mt = mt.annotate_rows(
+            grch37_locus=v2_liftover_index.original_locus,
+            grch37_alleles=v2_liftover_index.original_alleles,
+        )
+
+        ht_indexed = ht[mt.grch37_locus, mt.grch37_alleles]
         mt = mt.annotate_rows(
             filters=ht_indexed.filters,
             vep=ht_indexed.vep,
@@ -212,17 +227,9 @@ def main(args):
             popmax=ht_indexed.popmax,
         )
 
-        logger.info("Reading in v2 genomes, v3 genomes, and v2 liftover tables.")
-        v2_genomes_ht, v3_genomes_ht, v2_liftover_ht = load_public_resources()
-        # annotate liftover locus onto MT
-        v2_liftover_index = v2_liftover_ht[mt.row_key]
-        mt = mt.annotate_rows(
-            liftover_locus=v2_liftover_index.locus,
-            liftover_allele=v2_liftover_index.alleles,
-        )
         # Get v2 exome variants from v2 genomes and v3 genomes, and annotate their respective AF
-        v2_genomes_indexed = v2_genomes_ht[mt.row_key]
-        v3_genomes_indexed = v3_genomes_ht[mt.liftover_locus, mt.liftover_allele]
+        v2_genomes_indexed = v2_genomes_ht[mt.grch37_locus, mt.grch37_alleles]
+        v3_genomes_indexed = v3_genomes_ht[mt.row_key]
         logger.info(
             "Filtering to variants with a popmax allele frequency of less than .001 (0.1%) in v2_exomes, AND v2_genomes, AND v3_genomes..."
         )
@@ -298,10 +305,10 @@ def main(args):
         popmax_AN=ht.popmax[0].AN,
     )
     ht = ht.explode("samples_with_variant")
-    random_samples_pop_map = hl.dict(hl.zip(meta_ht.s.collect(), meta_ht.pop.collect()))
-    ht = ht.annotate(
-        pop=random_samples_pop_map[ht.samples_with_variant]
-    )  # does not require a shuffle this way
+    #random_samples_pop_map = hl.dict(hl.zip(meta_ht.s.collect(), meta_ht.pop.collect()))
+    #ht = ht.annotate(
+    #    pop=random_samples_pop_map[ht.samples_with_variant]
+    #)  # does not require a shuffle this way
 
     meta_ht.write(
         f"{args.output_path_prefix}/random_samples_metadata{'_test' if args.test else ''}.ht",
