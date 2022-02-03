@@ -180,10 +180,17 @@ def main(args):
                 "There is currently no checkpointed files for this dataset."
             )
     else:
-        logger.info("Reading in RDG WES v14 callset")
-        mt = hl.read_matrix_table("gs://seqr-datasets/v02/GRCh38/RDG_WES_Broad_Internal/v14/RDG_WES_Broad_Internal.mt")
-        logger.info("Filtering mt to populations of interest...")
+        logger.info("Reading in Neurodev callset matrix table ...")
+        mt = hl.read_matrix_table("gs://seqr-datasets/v02/GRCh38/RDG_WES_Broad_Internal/v12/projects/R0526_cmg_neurodev_wes.mt")
+        logger.info("Filtering mt to populations of interest, 860, and 859, and excluding -00 which are control sequences ...")
+        #mt = mt.filter_cols(mt.s.startswith("859") | mt.s.startswith("860"))
+        duplicate_individuals = hl.import_table("gs://gnomad-wphu/rdg_grant/neuodev_duplicate_individuals.txt", no_header=True)
+        mt = mt.filter_cols(~(hl.set(duplicate_individuals.f0.collect()).contains(mt.s)))
         mt = mt.filter_cols(mt.s.startswith("859") | mt.s.startswith("860"))
+        mt = mt.filter_cols(~(mt.s.endswith("-00")))
+        if args.probands:
+            logger.info("Filtering to only probands, using '-01'")
+            mt = mt.filter_cols(mt.s.endswith("-01"))
 
         if args.test:
             mt = mt._filter_partitions(range(args.test_n_partitions))
@@ -218,8 +225,8 @@ def main(args):
 
         ht_indexed = ht[mt.grch37_locus, mt.grch37_alleles]
         mt = mt.annotate_rows(
-            filters=ht_indexed.filters,
-            vep=ht_indexed.vep,
+            #filters=ht_indexed.filters,
+            #vep=ht_indexed.vep,
             freq=ht_indexed.freq,
             popmax=ht_indexed.popmax,
         )
@@ -250,8 +257,7 @@ def main(args):
         "Filtering to PASS variants present in randomly sampled individuals, removing low confidence regions, and filtering VEP to canonical transcripts only..."
     )
     mt = mt.filter_rows(
-        hl.is_defined(mt.filters) 
-        & (hl.len(mt.filters) == 0)
+        hl.or_else(hl.len(mt.filters)==0, True)
         & hl.agg.any(mt.GT.is_non_ref())
     )
 
@@ -302,6 +308,7 @@ def main(args):
         popmax_AN=ht.popmax[0].AN,
     )
     ht = ht.explode("samples_with_variant")
+    ht = ht.annotate(pop = hl.if_else(ht.samples_with_variant.startswith("859"), "South African", "Kenyan"))
     #random_samples_pop_map = hl.dict(hl.zip(meta_ht.s.collect(), meta_ht.pop.collect()))
     #ht = ht.annotate(
     #    pop=random_samples_pop_map[ht.samples_with_variant]
@@ -356,6 +363,7 @@ if __name__ == "__main__":
         type=str,
         help="Google folder to store output.",
     )
+    parser.add_argument("--probands", help="Filter to only probands", action="store_true")
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     args = parser.parse_args()
 
